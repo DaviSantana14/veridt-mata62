@@ -15,6 +15,22 @@ Na raiz do projeto:
 npm install
 ```
 
+## Variáveis de ambiente
+
+Copie os exemplos de ambiente antes de rodar Prisma ou iniciar os apps:
+
+```powershell
+Copy-Item apps/api-gateway/.env.example apps/api-gateway/.env
+Copy-Item apps/identity-service/.env.example apps/identity-service/.env
+Copy-Item apps/billing-service/.env.example apps/billing-service/.env
+Copy-Item apps/capture-service/.env.example apps/capture-service/.env
+Copy-Item apps/notification-service/.env.example apps/notification-service/.env
+Copy-Item apps/report-service/.env.example apps/report-service/.env
+Copy-Item apps/web/.env.example apps/web/.env.local
+```
+
+Esses arquivos `.env` ficam fora do Git. Ajuste os valores quando trocar portas, bancos ou integrações externas.
+
 ## Infraestrutura
 
 Suba PostgreSQL e RabbitMQ:
