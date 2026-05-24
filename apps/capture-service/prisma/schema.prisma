@@ -1,0 +1,48 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RecordStatus {
+  STARTED
+  COMPLETED
+  FAILED
+}
+
+enum AssetType {
+  IMAGE
+  VIDEO
+}
+
+model ContentRecord {
+  id         String         @id @default(uuid())
+  userId     String
+  title      String
+  siteUrl    String
+  status     RecordStatus   @default(STARTED)
+  details    String?
+  startedAt  DateTime       @default(now())
+  finishedAt DateTime?
+  assets     CaptureAsset[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model CaptureAsset {
+  id            String        @id @default(uuid())
+  recordId      String
+  type          AssetType
+  fileName      String
+  fileSizeBytes Int?
+  sourceUrl     String?
+  createdAt     DateTime      @default(now())
+  record        ContentRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId])
+}

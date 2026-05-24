@@ -1,0 +1,33 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationStatus {
+  MOCK_SENT
+  FAILED
+}
+
+model Notification {
+  id        String              @id @default(uuid())
+  recipient String
+  channel   NotificationChannel @default(EMAIL)
+  subject   String
+  body      String
+  eventName String
+  metadata  Json?
+  status    NotificationStatus  @default(MOCK_SENT)
+  createdAt DateTime            @default(now())
+
+  @@index([recipient])
+  @@index([eventName])
+}

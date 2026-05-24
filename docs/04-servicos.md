@@ -1,0 +1,38 @@
+# Serviços
+
+## `apps/web`
+
+Frontend Next.js. Deve consumir somente o API Gateway. A tela inicial mostra o status do gateway e os serviços configurados.
+
+## `apps/api-gateway`
+
+Entrada HTTP para o frontend. Rotas atuais:
+
+- `GET /health`
+- `GET /identity/health`
+- `POST /identity/users`
+- `GET /billing/health`
+- `GET /billing/packages`
+- `POST /billing/purchases/mock`
+- `GET /capture/health`
+- `POST /capture/records/mock`
+
+## `apps/identity-service`
+
+Responsável por usuários, perfis e recuperação de senha. Hoje tem cadastro mock persistido, sem senha/JWT completo.
+
+## `apps/billing-service`
+
+Responsável por pacotes, créditos e compras. Hoje cria uma compra mock, atualiza saldo local e publica `billing.credit_purchased`.
+
+## `apps/capture-service`
+
+Responsável por registros de conteúdo e assets capturados. Hoje cria uma captura mock e publica `capture.completed`.
+
+## `apps/notification-service`
+
+Responsável por notificações. Hoje consome `billing.credit_purchased` e persiste uma notificação de email mock.
+
+## `apps/report-service`
+
+Responsável por relatórios e arquivos gerados. Hoje consome `capture.completed` e persiste um relatório mock.

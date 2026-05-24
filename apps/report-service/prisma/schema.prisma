@@ -1,0 +1,30 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ReportStatus {
+  REQUESTED
+  READY
+  FAILED
+}
+
+model RecordReport {
+  id            String       @id @default(uuid())
+  recordId      String
+  userId        String
+  title         String
+  status        ReportStatus @default(READY)
+  fileName      String?
+  fileSizeBytes Int?
+  generatedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  @@index([recordId])
+  @@index([userId])
+}

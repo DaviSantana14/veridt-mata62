@@ -1,0 +1,54 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CreditPackageName {
+  BASIC
+  MEDIUM
+  PREMIUM
+}
+
+enum PurchaseStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
+model CreditPackage {
+  id                    String              @id @default(uuid())
+  name                  CreditPackageName   @unique
+  credits               Int
+  pricePerCreditInCents Int
+  benefits              String
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  purchases             CreditPurchase[]
+}
+
+model CreditPurchase {
+  id            String             @id @default(uuid())
+  userId        String
+  packageId     String?
+  packageName   CreditPackageName
+  credits       Int
+  amountInCents Int
+  payerEmail    String
+  status        PurchaseStatus     @default(PAID)
+  createdAt     DateTime           @default(now())
+  package       CreditPackage?     @relation(fields: [packageId], references: [id])
+
+  @@index([userId])
+  @@index([packageName])
+}
+
+model UserCreditBalance {
+  userId    String   @id
+  credits   Int      @default(0)
+  updatedAt DateTime @updatedAt
+}

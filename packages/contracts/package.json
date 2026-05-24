@@ -1,0 +1,26 @@
+{
+  "name": "@veridit/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "lint": "eslint \"src/**/*.ts\""
+  },
+  "devDependencies": {
+    "@veridit/eslint-config": "0.0.0",
+    "@veridit/typescript-config": "0.0.0",
+    "eslint": "^9.39.1",
+    "typescript": "5.9.2",
+    "typescript-eslint": "^8.50.0"
+  }
+}
