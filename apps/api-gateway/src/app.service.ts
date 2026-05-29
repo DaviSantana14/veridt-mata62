@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable } from '@nestjs/common';
+import { BadGatewayException, HttpException, Injectable } from '@nestjs/common';
 import {
   SERVICE_PORTS,
   type ContentRecordResponse,
@@ -98,6 +98,9 @@ export class AppService {
       {
         'idempotency-key': idempotencyKey,
       },
+      {
+        preserveClientErrors: true,
+      },
     );
   }
 
@@ -128,27 +131,45 @@ export class AppService {
     path: string,
     body: object,
     headers: Record<string, string> = {},
+    options: { preserveClientErrors?: boolean } = {},
   ): Promise<T> {
-    return this.request<T>(service, `${baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...headers,
+    return this.request<T>(
+      service,
+      `${baseUrl}${path}`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+      options,
+    );
   }
 
   private async request<T>(
     service: ServiceName,
     url: string,
     init?: RequestInit,
+    options: { preserveClientErrors?: boolean } = {},
   ): Promise<T> {
     try {
       const response = await fetch(url, init);
       const payload: unknown = await response.json();
 
       if (!response.ok) {
+        if (
+          options.preserveClientErrors &&
+          response.status >= 400 &&
+          response.status < 500
+        ) {
+          throw new HttpException(
+            this.toHttpExceptionResponse(payload),
+            response.status,
+          );
+        }
+
         throw new BadGatewayException({
           service,
           statusCode: response.status,
@@ -162,11 +183,33 @@ export class AppService {
         throw error;
       }
 
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new BadGatewayException({
         service,
         message,
       });
     }
+  }
+
+  private toHttpExceptionResponse(
+    payload: unknown,
+  ): string | Record<string, unknown> {
+    if (typeof payload === 'string') {
+      return payload;
+    }
+
+    if (
+      typeof payload === 'object' &&
+      payload !== null &&
+      !Array.isArray(payload)
+    ) {
+      return payload as Record<string, unknown>;
+    }
+
+    return { payload };
   }
 }

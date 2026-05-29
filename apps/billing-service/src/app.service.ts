@@ -197,7 +197,10 @@ export class AppService {
 
     if (existingPurchase) {
       this.assertSameIdempotentPurchase(existingPurchase, body);
-      return this.toCreateCreditPurchaseResponse(existingPurchase);
+      return this.toCreateCreditPurchaseResponse(
+        existingPurchase,
+        normalizedIdempotencyKey,
+      );
     }
 
     const selectedPackage = PACKAGE_DEFINITIONS[body.packageName];
@@ -233,35 +236,13 @@ export class AppService {
       }
 
       this.assertSameIdempotentPurchase(duplicatedPurchase, body);
-      return this.toCreateCreditPurchaseResponse(duplicatedPurchase);
+      return this.toCreateCreditPurchaseResponse(
+        duplicatedPurchase,
+        normalizedIdempotencyKey,
+      );
     }
 
-    const checkout = await this.paymentProvider.createCheckoutPreference({
-      purchaseId: purchase.id,
-      idempotencyKey: normalizedIdempotencyKey,
-      userId: body.userId,
-      packageName: body.packageName,
-      payerEmail: body.payerEmail,
-      credits: selectedPackage.credits,
-      amountInCents,
-    });
-
-    const updatedPurchase = await this.prisma.creditPurchase.update({
-      where: {
-        id: purchase.id,
-      },
-      data: {
-        providerPreferenceId: checkout.providerPreferenceId,
-        checkoutUrl: checkout.checkoutUrl,
-      },
-    });
-
-    return {
-      purchaseId: updatedPurchase.id,
-      status: updatedPurchase.status,
-      checkoutUrl: checkout.checkoutUrl,
-      providerPreferenceId: checkout.providerPreferenceId,
-    };
+    return this.createAndPersistCheckout(purchase, normalizedIdempotencyKey);
   }
 
   async handleMercadoPagoWebhook(
@@ -391,6 +372,7 @@ export class AppService {
 
   private async toCreateCreditPurchaseResponse(
     purchase: CreditPurchase,
+    idempotencyKey: string,
   ): Promise<CreateCreditPurchaseResponse> {
     if (purchase.status === 'CANCELED') {
       throw new ConflictException(
@@ -414,27 +396,10 @@ export class AppService {
         );
 
       if (recoveredCheckout) {
-        const recoveredPurchase = await this.prisma.creditPurchase.update({
-          where: {
-            id: purchase.id,
-          },
-          data: {
-            providerPreferenceId: recoveredCheckout.providerPreferenceId,
-            checkoutUrl: recoveredCheckout.checkoutUrl,
-          },
-        });
-
-        return {
-          purchaseId: recoveredPurchase.id,
-          status: recoveredPurchase.status,
-          checkoutUrl: recoveredCheckout.checkoutUrl,
-          providerPreferenceId: recoveredCheckout.providerPreferenceId,
-        };
+        return this.persistCheckout(purchase.id, recoveredCheckout);
       }
 
-      throw new ConflictException(
-        'Checkout is still being created. Retry with the same Idempotency-Key.',
-      );
+      return this.createAndPersistCheckout(purchase, idempotencyKey);
     }
 
     throw new ConflictException(
@@ -450,6 +415,45 @@ export class AppService {
     }
 
     return normalizedIdempotencyKey;
+  }
+
+  private async createAndPersistCheckout(
+    purchase: CreditPurchase,
+    idempotencyKey: string,
+  ): Promise<CreateCreditPurchaseResponse> {
+    const checkout = await this.paymentProvider.createCheckoutPreference({
+      purchaseId: purchase.id,
+      idempotencyKey,
+      userId: purchase.userId,
+      packageName: this.toContractPackageName(purchase.packageName),
+      payerEmail: purchase.payerEmail,
+      credits: purchase.credits,
+      amountInCents: purchase.amountInCents,
+    });
+
+    return this.persistCheckout(purchase.id, checkout);
+  }
+
+  private async persistCheckout(
+    purchaseId: string,
+    checkout: CheckoutPreference,
+  ): Promise<CreateCreditPurchaseResponse> {
+    const updatedPurchase = await this.prisma.creditPurchase.update({
+      where: {
+        id: purchaseId,
+      },
+      data: {
+        providerPreferenceId: checkout.providerPreferenceId,
+        checkoutUrl: checkout.checkoutUrl,
+      },
+    });
+
+    return {
+      purchaseId: updatedPurchase.id,
+      status: updatedPurchase.status,
+      checkoutUrl: checkout.checkoutUrl,
+      providerPreferenceId: checkout.providerPreferenceId,
+    };
   }
 
   private assertSameIdempotentPurchase(
