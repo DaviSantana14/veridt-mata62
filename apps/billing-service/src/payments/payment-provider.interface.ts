@@ -1,0 +1,34 @@
+import type { CreateCreditPurchaseRequest } from '@veridit/contracts';
+
+export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
+
+export type CreateCheckoutPreferenceInput = CreateCreditPurchaseRequest & {
+  purchaseId: string;
+  idempotencyKey: string;
+  amountInCents: number;
+  credits: number;
+};
+
+export type CreateCheckoutPreferenceResult = {
+  providerPreferenceId: string;
+  checkoutUrl: string;
+};
+
+export type ProviderPayment = {
+  providerPaymentId: string;
+  status: string;
+  externalReference?: string;
+  approvedAt?: Date;
+};
+
+export interface PaymentProvider {
+  createCheckoutPreference(
+    input: CreateCheckoutPreferenceInput,
+  ): Promise<CreateCheckoutPreferenceResult>;
+
+  findCheckoutPreferenceByPurchaseId(
+    purchaseId: string,
+  ): Promise<CreateCheckoutPreferenceResult | null>;
+
+  getPayment(paymentId: string): Promise<ProviderPayment>;
+}

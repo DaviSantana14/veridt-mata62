@@ -1,6 +1,14 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+} from '@nestjs/common';
 import type {
   ContentRecordResponse,
+  CreateCreditPurchaseResponse,
   CreditPackageResponse,
   HealthResponse,
   PurchaseCreditsRequest,
@@ -8,6 +16,7 @@ import type {
 } from '@veridit/contracts';
 import { AppService } from './app.service';
 import type { GatewayHealthResponse } from './app.service';
+import { CreateCreditPurchaseDto } from './dto/create-credit-purchase.dto';
 import { MockCaptureDto } from './dto/mock-capture.dto';
 import { MockPurchaseDto } from './dto/mock-purchase.dto';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -46,6 +55,18 @@ export class AppController {
     @Body() body: MockPurchaseDto,
   ): Promise<PurchaseCreditsRequest & { purchaseId: string; status: string }> {
     return this.appService.createMockPurchase(body);
+  }
+
+  @Post('billing/purchases')
+  createCreditPurchase(
+    @Body() body: CreateCreditPurchaseDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ): Promise<CreateCreditPurchaseResponse> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return this.appService.createCreditPurchase(body, idempotencyKey);
   }
 
   @Get('capture/health')
