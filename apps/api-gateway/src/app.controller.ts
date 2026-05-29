@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+} from '@nestjs/common';
 import type {
   ContentRecordResponse,
   CreateCreditPurchaseResponse,
@@ -53,8 +60,13 @@ export class AppController {
   @Post('billing/purchases')
   createCreditPurchase(
     @Body() body: CreateCreditPurchaseDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
   ): Promise<CreateCreditPurchaseResponse> {
-    return this.appService.createCreditPurchase(body);
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return this.appService.createCreditPurchase(body, idempotencyKey);
   }
 
   @Get('capture/health')

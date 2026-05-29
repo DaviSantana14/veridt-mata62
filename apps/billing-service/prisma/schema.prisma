@@ -45,6 +45,7 @@ model CreditPurchase {
   payerEmail           String
   status               PurchaseStatus     @default(PENDING)
   provider             PaymentProvider    @default(MERCADO_PAGO)
+  idempotencyKey       String?            @unique
   providerPreferenceId String?            @unique
   providerPaymentId    String?            @unique
   checkoutUrl          String?

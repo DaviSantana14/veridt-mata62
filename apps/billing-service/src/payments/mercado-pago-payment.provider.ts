@@ -73,6 +73,9 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
           credits: input.credits,
         },
       },
+      requestOptions: {
+        idempotencyKey: input.idempotencyKey,
+      },
     });
 
     const providerPreferenceId = response.id;

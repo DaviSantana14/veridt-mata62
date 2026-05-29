@@ -2,6 +2,7 @@ import type { CreateCreditPurchaseRequest } from '@veridit/contracts';
 
 export type CreateCheckoutPreferenceInput = CreateCreditPurchaseRequest & {
   purchaseId: string;
+  idempotencyKey: string;
   amountInCents: number;
   credits: number;
 };

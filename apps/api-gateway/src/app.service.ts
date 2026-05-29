@@ -88,12 +88,16 @@ export class AppService {
 
   createCreditPurchase(
     body: CreateCreditPurchaseRequest,
+    idempotencyKey: string,
   ): Promise<CreateCreditPurchaseResponse> {
     return this.postToService(
       'billing-service',
       this.urls.billing,
       '/purchases',
       body,
+      {
+        'idempotency-key': idempotencyKey,
+      },
     );
   }
 
@@ -123,11 +127,13 @@ export class AppService {
     baseUrl: string,
     path: string,
     body: object,
+    headers: Record<string, string> = {},
   ): Promise<T> {
     return this.request<T>(service, `${baseUrl}${path}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        ...headers,
       },
       body: JSON.stringify(body),
     });

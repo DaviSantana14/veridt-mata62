@@ -1,11 +1,18 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import {
   type CreateCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
   type PurchaseCreditsRequest,
 } from '@veridit/contracts';
-import { CreditPackageName } from './generated/prisma/client';
+import {
+  CreditPackageName,
+  type CreditPurchase,
+} from './generated/prisma/client';
 import { BillingEventsPublisher } from './messaging/billing-events.publisher';
 import { MercadoPagoPaymentProvider } from './payments/mercado-pago-payment.provider';
 import { PrismaService } from './prisma/prisma.service';
@@ -151,27 +158,59 @@ export class AppService {
 
   async createCreditPurchase(
     body: PurchaseCreditsRequest,
+    idempotencyKey: string,
   ): Promise<CreateCreditPurchaseResponse> {
+    const normalizedIdempotencyKey =
+      this.normalizeIdempotencyKey(idempotencyKey);
+    const existingPurchase = await this.prisma.creditPurchase.findUnique({
+      where: {
+        idempotencyKey: normalizedIdempotencyKey,
+      },
+    });
+
+    if (existingPurchase) {
+      return this.toCreateCreditPurchaseResponse(existingPurchase);
+    }
+
     const selectedPackage = PACKAGE_DEFINITIONS[body.packageName];
     const amountInCents =
       selectedPackage.credits * selectedPackage.pricePerCreditInCents;
     const creditPackage = await this.upsertCreditPackage(selectedPackage);
 
-    const purchase = await this.prisma.creditPurchase.create({
-      data: {
+    let purchase: CreditPurchase;
+
+    try {
+      purchase = await this.createPendingPurchase({
         userId: body.userId,
         packageId: creditPackage.id,
         packageName: selectedPackage.schemaName,
         credits: selectedPackage.credits,
         amountInCents,
         payerEmail: body.payerEmail,
-        status: 'PENDING',
-      },
-    });
+        idempotencyKey: normalizedIdempotencyKey,
+      });
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const duplicatedPurchase = await this.prisma.creditPurchase.findUnique({
+        where: {
+          idempotencyKey: normalizedIdempotencyKey,
+        },
+      });
+
+      if (!duplicatedPurchase) {
+        throw error;
+      }
+
+      return this.toCreateCreditPurchaseResponse(duplicatedPurchase);
+    }
 
     try {
       const checkout = await this.paymentProvider.createCheckoutPreference({
         purchaseId: purchase.id,
+        idempotencyKey: normalizedIdempotencyKey,
         userId: body.userId,
         packageName: body.packageName,
         payerEmail: body.payerEmail,
@@ -316,6 +355,65 @@ export class AppService {
         benefits: selectedPackage.benefits,
       },
     });
+  }
+
+  private async createPendingPurchase(data: {
+    userId: string;
+    packageId: string;
+    packageName: CreditPackageName;
+    credits: number;
+    amountInCents: number;
+    payerEmail: string;
+    idempotencyKey: string;
+  }): Promise<CreditPurchase> {
+    return this.prisma.creditPurchase.create({
+      data: {
+        ...data,
+        status: 'PENDING',
+      },
+    });
+  }
+
+  private toCreateCreditPurchaseResponse(
+    purchase: CreditPurchase,
+  ): CreateCreditPurchaseResponse {
+    if (purchase.checkoutUrl && purchase.providerPreferenceId) {
+      return {
+        purchaseId: purchase.id,
+        status: purchase.status,
+        checkoutUrl: purchase.checkoutUrl,
+        providerPreferenceId: purchase.providerPreferenceId,
+      };
+    }
+
+    if (purchase.status === 'PENDING') {
+      throw new ConflictException(
+        'Checkout is still being created. Retry with the same Idempotency-Key.',
+      );
+    }
+
+    throw new ConflictException(
+      'This idempotency key cannot be reused. Start a new checkout with a new Idempotency-Key.',
+    );
+  }
+
+  private normalizeIdempotencyKey(idempotencyKey: string): string {
+    const normalizedIdempotencyKey = idempotencyKey.trim();
+
+    if (!normalizedIdempotencyKey) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return normalizedIdempotencyKey;
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002'
+    );
   }
 
   private async confirmApprovedPayment(
