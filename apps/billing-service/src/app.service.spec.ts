@@ -1,5 +1,5 @@
 import { ConflictException } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import type { PurchaseCreditsRequest } from '@veridit/contracts';
 import { AppService } from './app.service';
 import {
@@ -99,7 +99,7 @@ describe('AppService Mercado Pago billing flow', () => {
         callback(prisma),
     );
 
-    const moduleRef = await Test.createTestingModule({
+    const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         AppService,
         {
@@ -117,7 +117,7 @@ describe('AppService Mercado Pago billing flow', () => {
       ],
     }).compile();
 
-    service = moduleRef.get(AppService);
+    service = moduleRef.get<AppService>(AppService);
   });
 
   it('creates a pending purchase and checkout without crediting balance', async () => {
