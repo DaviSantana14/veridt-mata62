@@ -62,6 +62,21 @@ export interface PurchaseCreditsRequest {
   payerEmail: string;
 }
 
+export type CreditPurchaseStatus = "PENDING" | "PAID" | "CANCELED";
+
+export interface CreateCreditPurchaseRequest {
+  userId: string;
+  packageName: "basic" | "medium" | "premium";
+  payerEmail: string;
+}
+
+export interface CreateCreditPurchaseResponse {
+  purchaseId: string;
+  status: CreditPurchaseStatus;
+  checkoutUrl: string;
+  providerPreferenceId: string;
+}
+
 export interface CreditPurchaseCreatedEvent {
   purchaseId: string;
   userId: string;
