@@ -15,6 +15,7 @@ import {
 } from './generated/prisma/client';
 import { BillingEventsPublisher } from './messaging/billing-events.publisher';
 import { MercadoPagoPaymentProvider } from './payments/mercado-pago-payment.provider';
+import type { CreateCheckoutPreferenceResult } from './payments/payment-provider.interface';
 import { PrismaService } from './prisma/prisma.service';
 
 type PackageDefinition = CreditPackageResponse & {
@@ -169,6 +170,7 @@ export class AppService {
     });
 
     if (existingPurchase) {
+      this.assertSameIdempotentPurchase(existingPurchase, body);
       return this.toCreateCreditPurchaseResponse(existingPurchase);
     }
 
@@ -204,11 +206,14 @@ export class AppService {
         throw error;
       }
 
+      this.assertSameIdempotentPurchase(duplicatedPurchase, body);
       return this.toCreateCreditPurchaseResponse(duplicatedPurchase);
     }
 
+    let checkout: CreateCheckoutPreferenceResult;
+
     try {
-      const checkout = await this.paymentProvider.createCheckoutPreference({
+      checkout = await this.paymentProvider.createCheckoutPreference({
         purchaseId: purchase.id,
         idempotencyKey: normalizedIdempotencyKey,
         userId: body.userId,
@@ -217,23 +222,6 @@ export class AppService {
         credits: selectedPackage.credits,
         amountInCents,
       });
-
-      const updatedPurchase = await this.prisma.creditPurchase.update({
-        where: {
-          id: purchase.id,
-        },
-        data: {
-          providerPreferenceId: checkout.providerPreferenceId,
-          checkoutUrl: checkout.checkoutUrl,
-        },
-      });
-
-      return {
-        purchaseId: updatedPurchase.id,
-        status: updatedPurchase.status,
-        checkoutUrl: checkout.checkoutUrl,
-        providerPreferenceId: checkout.providerPreferenceId,
-      };
     } catch (error) {
       await this.prisma.creditPurchase.update({
         where: {
@@ -247,6 +235,23 @@ export class AppService {
 
       throw error;
     }
+
+    const updatedPurchase = await this.prisma.creditPurchase.update({
+      where: {
+        id: purchase.id,
+      },
+      data: {
+        providerPreferenceId: checkout.providerPreferenceId,
+        checkoutUrl: checkout.checkoutUrl,
+      },
+    });
+
+    return {
+      purchaseId: updatedPurchase.id,
+      status: updatedPurchase.status,
+      checkoutUrl: checkout.checkoutUrl,
+      providerPreferenceId: checkout.providerPreferenceId,
+    };
   }
 
   async handleMercadoPagoWebhook(
@@ -429,6 +434,23 @@ export class AppService {
     }
 
     return normalizedIdempotencyKey;
+  }
+
+  private assertSameIdempotentPurchase(
+    purchase: CreditPurchase,
+    body: PurchaseCreditsRequest,
+  ): void {
+    const packageName = this.toContractPackageName(purchase.packageName);
+
+    if (
+      purchase.userId !== body.userId ||
+      purchase.payerEmail !== body.payerEmail ||
+      packageName !== body.packageName
+    ) {
+      throw new ConflictException(
+        'Idempotency-Key was already used for a different credit purchase.',
+      );
+    }
   }
 
   private isUniqueConstraintError(error: unknown): boolean {
