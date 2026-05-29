@@ -1,11 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  type CreateCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
   type PurchaseCreditsRequest,
 } from '@veridit/contracts';
 import { CreditPackageName } from './generated/prisma/client';
 import { BillingEventsPublisher } from './messaging/billing-events.publisher';
+import { MercadoPagoPaymentProvider } from './payments/mercado-pago-payment.provider';
 import { PrismaService } from './prisma/prisma.service';
 
 type PackageDefinition = CreditPackageResponse & {
@@ -15,6 +17,26 @@ type PackageDefinition = CreditPackageResponse & {
 export type MockPurchaseResponse = PurchaseCreditsRequest & {
   purchaseId: string;
   status: string;
+};
+
+export type MercadoPagoWebhookPayload = {
+  action?: string;
+  api_version?: string;
+  data?: {
+    id?: string | number;
+  };
+  date_created?: string;
+  id?: string | number;
+  live_mode?: boolean;
+  topic?: string;
+  type?: string;
+  user_id?: string | number;
+};
+
+export type MercadoPagoWebhookResponse = {
+  received: boolean;
+  processed: boolean;
+  status?: string;
 };
 
 const PACKAGE_DEFINITIONS: Record<
@@ -52,6 +74,7 @@ export class AppService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsPublisher: BillingEventsPublisher,
+    private readonly paymentProvider: MercadoPagoPaymentProvider,
   ) {}
 
   getHealth(): HealthResponse {
@@ -79,22 +102,7 @@ export class AppService {
     const amountInCents =
       selectedPackage.credits * selectedPackage.pricePerCreditInCents;
 
-    const creditPackage = await this.prisma.creditPackage.upsert({
-      where: {
-        name: selectedPackage.schemaName,
-      },
-      create: {
-        name: selectedPackage.schemaName,
-        credits: selectedPackage.credits,
-        pricePerCreditInCents: selectedPackage.pricePerCreditInCents,
-        benefits: selectedPackage.benefits,
-      },
-      update: {
-        credits: selectedPackage.credits,
-        pricePerCreditInCents: selectedPackage.pricePerCreditInCents,
-        benefits: selectedPackage.benefits,
-      },
-    });
+    const creditPackage = await this.upsertCreditPackage(selectedPackage);
 
     const purchase = await this.prisma.creditPurchase.create({
       data: {
@@ -139,5 +147,257 @@ export class AppService {
       payerEmail: body.payerEmail,
       status: purchase.status,
     };
+  }
+
+  async createCreditPurchase(
+    body: PurchaseCreditsRequest,
+  ): Promise<CreateCreditPurchaseResponse> {
+    const selectedPackage = PACKAGE_DEFINITIONS[body.packageName];
+    const amountInCents =
+      selectedPackage.credits * selectedPackage.pricePerCreditInCents;
+    const creditPackage = await this.upsertCreditPackage(selectedPackage);
+
+    const purchase = await this.prisma.creditPurchase.create({
+      data: {
+        userId: body.userId,
+        packageId: creditPackage.id,
+        packageName: selectedPackage.schemaName,
+        credits: selectedPackage.credits,
+        amountInCents,
+        payerEmail: body.payerEmail,
+        status: 'PENDING',
+      },
+    });
+
+    try {
+      const checkout = await this.paymentProvider.createCheckoutPreference({
+        purchaseId: purchase.id,
+        userId: body.userId,
+        packageName: body.packageName,
+        payerEmail: body.payerEmail,
+        credits: selectedPackage.credits,
+        amountInCents,
+      });
+
+      const updatedPurchase = await this.prisma.creditPurchase.update({
+        where: {
+          id: purchase.id,
+        },
+        data: {
+          providerPreferenceId: checkout.providerPreferenceId,
+          checkoutUrl: checkout.checkoutUrl,
+        },
+      });
+
+      return {
+        purchaseId: updatedPurchase.id,
+        status: updatedPurchase.status,
+        checkoutUrl: checkout.checkoutUrl,
+        providerPreferenceId: checkout.providerPreferenceId,
+      };
+    } catch (error) {
+      await this.prisma.creditPurchase.update({
+        where: {
+          id: purchase.id,
+        },
+        data: {
+          status: 'CANCELED',
+          canceledAt: new Date(),
+        },
+      });
+
+      throw error;
+    }
+  }
+
+  async handleMercadoPagoWebhook(
+    payload: MercadoPagoWebhookPayload,
+  ): Promise<MercadoPagoWebhookResponse> {
+    if (!this.isPaymentNotification(payload)) {
+      return {
+        received: true,
+        processed: false,
+      };
+    }
+
+    const paymentId = this.extractPaymentId(payload);
+
+    if (!paymentId) {
+      return {
+        received: true,
+        processed: false,
+      };
+    }
+
+    const payment = await this.paymentProvider.getPayment(paymentId);
+
+    if (!payment.externalReference) {
+      throw new BadRequestException(
+        'Mercado Pago payment is missing external_reference',
+      );
+    }
+
+    const purchase = await this.prisma.creditPurchase.findUnique({
+      where: {
+        id: payment.externalReference,
+      },
+    });
+
+    if (!purchase) {
+      throw new BadRequestException('Credit purchase not found');
+    }
+
+    if (payment.status === 'approved') {
+      const confirmed = await this.confirmApprovedPayment(
+        purchase.id,
+        payment.providerPaymentId,
+        payment.approvedAt,
+      );
+
+      if (confirmed) {
+        this.eventsPublisher.publishCreditPurchased({
+          purchaseId: confirmed.id,
+          userId: confirmed.userId,
+          packageName: this.toContractPackageName(confirmed.packageName),
+          credits: confirmed.credits,
+          payerEmail: confirmed.payerEmail,
+          occurredAt: (confirmed.paidAt ?? new Date()).toISOString(),
+        });
+      }
+
+      return {
+        received: true,
+        processed: Boolean(confirmed),
+        status: 'PAID',
+      };
+    }
+
+    if (this.isCanceledPaymentStatus(payment.status)) {
+      const canceled = await this.prisma.creditPurchase.updateMany({
+        where: {
+          id: purchase.id,
+          status: 'PENDING',
+        },
+        data: {
+          status: 'CANCELED',
+          providerPaymentId: payment.providerPaymentId,
+          canceledAt: new Date(),
+        },
+      });
+
+      return {
+        received: true,
+        processed: canceled.count > 0,
+        status: 'CANCELED',
+      };
+    }
+
+    return {
+      received: true,
+      processed: false,
+      status: payment.status,
+    };
+  }
+
+  private upsertCreditPackage(selectedPackage: PackageDefinition) {
+    return this.prisma.creditPackage.upsert({
+      where: {
+        name: selectedPackage.schemaName,
+      },
+      create: {
+        name: selectedPackage.schemaName,
+        credits: selectedPackage.credits,
+        pricePerCreditInCents: selectedPackage.pricePerCreditInCents,
+        benefits: selectedPackage.benefits,
+      },
+      update: {
+        credits: selectedPackage.credits,
+        pricePerCreditInCents: selectedPackage.pricePerCreditInCents,
+        benefits: selectedPackage.benefits,
+      },
+    });
+  }
+
+  private async confirmApprovedPayment(
+    purchaseId: string,
+    providerPaymentId: string,
+    approvedAt: Date | undefined,
+  ) {
+    return this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.creditPurchase.updateMany({
+        where: {
+          id: purchaseId,
+          status: 'PENDING',
+        },
+        data: {
+          status: 'PAID',
+          providerPaymentId,
+          paidAt: approvedAt ?? new Date(),
+        },
+      });
+
+      if (updated.count === 0) {
+        return null;
+      }
+
+      const purchase = await transaction.creditPurchase.findUniqueOrThrow({
+        where: {
+          id: purchaseId,
+        },
+      });
+
+      await transaction.userCreditBalance.upsert({
+        where: {
+          userId: purchase.userId,
+        },
+        create: {
+          userId: purchase.userId,
+          credits: purchase.credits,
+        },
+        update: {
+          credits: {
+            increment: purchase.credits,
+          },
+        },
+      });
+
+      return purchase;
+    });
+  }
+
+  private extractPaymentId(
+    payload: MercadoPagoWebhookPayload,
+  ): string | undefined {
+    const paymentId = payload.data?.id ?? payload.id;
+
+    if (!paymentId) {
+      return undefined;
+    }
+
+    return String(paymentId);
+  }
+
+  private isPaymentNotification(payload: MercadoPagoWebhookPayload): boolean {
+    return (
+      payload.type === 'payment' ||
+      payload.topic === 'payment' ||
+      payload.action?.startsWith('payment.') === true
+    );
+  }
+
+  private isCanceledPaymentStatus(status: string): boolean {
+    return [
+      'cancelled',
+      'canceled',
+      'rejected',
+      'refunded',
+      'charged_back',
+    ].includes(status);
+  }
+
+  private toContractPackageName(
+    packageName: CreditPackageName,
+  ): PurchaseCreditsRequest['packageName'] {
+    return packageName.toLowerCase() as PurchaseCreditsRequest['packageName'];
   }
 }

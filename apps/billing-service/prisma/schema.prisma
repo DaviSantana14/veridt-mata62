@@ -20,6 +20,10 @@ enum PurchaseStatus {
   CANCELED
 }
 
+enum PaymentProvider {
+  MERCADO_PAGO
+}
+
 model CreditPackage {
   id                    String              @id @default(uuid())
   name                  CreditPackageName   @unique
@@ -32,19 +36,26 @@ model CreditPackage {
 }
 
 model CreditPurchase {
-  id            String             @id @default(uuid())
-  userId        String
-  packageId     String?
-  packageName   CreditPackageName
-  credits       Int
-  amountInCents Int
-  payerEmail    String
-  status        PurchaseStatus     @default(PAID)
-  createdAt     DateTime           @default(now())
-  package       CreditPackage?     @relation(fields: [packageId], references: [id])
+  id                   String             @id @default(uuid())
+  userId               String
+  packageId            String?
+  packageName          CreditPackageName
+  credits              Int
+  amountInCents        Int
+  payerEmail           String
+  status               PurchaseStatus     @default(PENDING)
+  provider             PaymentProvider    @default(MERCADO_PAGO)
+  providerPreferenceId String?            @unique
+  providerPaymentId    String?            @unique
+  checkoutUrl          String?
+  paidAt               DateTime?
+  canceledAt           DateTime?
+  createdAt            DateTime           @default(now())
+  package              CreditPackage?     @relation(fields: [packageId], references: [id])
 
   @@index([userId])
   @@index([packageName])
+  @@index([status])
 }
 
 model UserCreditBalance {
