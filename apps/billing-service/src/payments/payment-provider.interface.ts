@@ -24,5 +24,9 @@ export interface PaymentProvider {
     input: CreateCheckoutPreferenceInput,
   ): Promise<CreateCheckoutPreferenceResult>;
 
+  findCheckoutPreferenceByPurchaseId(
+    purchaseId: string,
+  ): Promise<CreateCheckoutPreferenceResult | null>;
+
   getPayment(paymentId: string): Promise<ProviderPayment>;
 }

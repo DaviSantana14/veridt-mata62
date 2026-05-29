@@ -105,6 +105,35 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
     };
   }
 
+  async findCheckoutPreferenceByPurchaseId(
+    purchaseId: string,
+  ): Promise<CreateCheckoutPreferenceResult | null> {
+    const { preference } = this.getClients();
+    const search = await preference.search({
+      options: {
+        external_reference: purchaseId,
+        limit: 1,
+      },
+    });
+    const preferenceId = search.elements?.[0]?.id;
+
+    if (!preferenceId) {
+      return null;
+    }
+
+    const response = await preference.get({ preferenceId });
+    const checkoutUrl = response.init_point ?? response.sandbox_init_point;
+
+    if (!response.id || !checkoutUrl) {
+      return null;
+    }
+
+    return {
+      providerPreferenceId: response.id,
+      checkoutUrl,
+    };
+  }
+
   private getClients(): MercadoPagoClients {
     if (!this.clients) {
       const client = new MercadoPagoConfig({

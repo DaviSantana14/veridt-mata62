@@ -374,9 +374,9 @@ export class AppService {
     });
   }
 
-  private toCreateCreditPurchaseResponse(
+  private async toCreateCreditPurchaseResponse(
     purchase: CreditPurchase,
-  ): CreateCreditPurchaseResponse {
+  ): Promise<CreateCreditPurchaseResponse> {
     if (purchase.checkoutUrl && purchase.providerPreferenceId) {
       return {
         purchaseId: purchase.id,
@@ -387,6 +387,30 @@ export class AppService {
     }
 
     if (purchase.status === 'PENDING') {
+      const recoveredCheckout =
+        await this.paymentProvider.findCheckoutPreferenceByPurchaseId(
+          purchase.id,
+        );
+
+      if (recoveredCheckout) {
+        const recoveredPurchase = await this.prisma.creditPurchase.update({
+          where: {
+            id: purchase.id,
+          },
+          data: {
+            providerPreferenceId: recoveredCheckout.providerPreferenceId,
+            checkoutUrl: recoveredCheckout.checkoutUrl,
+          },
+        });
+
+        return {
+          purchaseId: recoveredPurchase.id,
+          status: recoveredPurchase.status,
+          checkoutUrl: recoveredCheckout.checkoutUrl,
+          providerPreferenceId: recoveredCheckout.providerPreferenceId,
+        };
+      }
+
       throw new ConflictException(
         'Checkout is still being created. Retry with the same Idempotency-Key.',
       );
