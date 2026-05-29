@@ -210,10 +210,8 @@ export class AppService {
       return this.toCreateCreditPurchaseResponse(duplicatedPurchase);
     }
 
-    let checkout: CreateCheckoutPreferenceResult;
-
-    try {
-      checkout = await this.paymentProvider.createCheckoutPreference({
+    const checkout: CreateCheckoutPreferenceResult =
+      await this.paymentProvider.createCheckoutPreference({
         purchaseId: purchase.id,
         idempotencyKey: normalizedIdempotencyKey,
         userId: body.userId,
@@ -222,19 +220,6 @@ export class AppService {
         credits: selectedPackage.credits,
         amountInCents,
       });
-    } catch (error) {
-      await this.prisma.creditPurchase.update({
-        where: {
-          id: purchase.id,
-        },
-        data: {
-          status: 'CANCELED',
-          canceledAt: new Date(),
-        },
-      });
-
-      throw error;
-    }
 
     const updatedPurchase = await this.prisma.creditPurchase.update({
       where: {
@@ -382,6 +367,12 @@ export class AppService {
   private async toCreateCreditPurchaseResponse(
     purchase: CreditPurchase,
   ): Promise<CreateCreditPurchaseResponse> {
+    if (purchase.status === 'CANCELED') {
+      throw new ConflictException(
+        'This idempotency key cannot be reused. Start a new checkout with a new Idempotency-Key.',
+      );
+    }
+
     if (purchase.checkoutUrl && purchase.providerPreferenceId) {
       return {
         purchaseId: purchase.id,
