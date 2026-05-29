@@ -2,6 +2,8 @@ import { BadGatewayException, Injectable } from '@nestjs/common';
 import {
   SERVICE_PORTS,
   type ContentRecordResponse,
+  type CreateCreditPurchaseRequest,
+  type CreateCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
   type PurchaseCreditsRequest,
@@ -80,6 +82,17 @@ export class AppService {
       'billing-service',
       this.urls.billing,
       '/purchases/mock',
+      body,
+    );
+  }
+
+  createCreditPurchase(
+    body: CreateCreditPurchaseRequest,
+  ): Promise<CreateCreditPurchaseResponse> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      '/purchases',
       body,
     );
   }
