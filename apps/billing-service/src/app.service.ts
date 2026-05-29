@@ -15,7 +15,6 @@ import {
 } from './generated/prisma/client';
 import { BillingEventsPublisher } from './messaging/billing-events.publisher';
 import { MercadoPagoPaymentProvider } from './payments/mercado-pago-payment.provider';
-import type { CreateCheckoutPreferenceResult } from './payments/payment-provider.interface';
 import { PrismaService } from './prisma/prisma.service';
 
 type PackageDefinition = CreditPackageResponse & {
@@ -210,16 +209,15 @@ export class AppService {
       return this.toCreateCreditPurchaseResponse(duplicatedPurchase);
     }
 
-    const checkout: CreateCheckoutPreferenceResult =
-      await this.paymentProvider.createCheckoutPreference({
-        purchaseId: purchase.id,
-        idempotencyKey: normalizedIdempotencyKey,
-        userId: body.userId,
-        packageName: body.packageName,
-        payerEmail: body.payerEmail,
-        credits: selectedPackage.credits,
-        amountInCents,
-      });
+    const checkout = await this.paymentProvider.createCheckoutPreference({
+      purchaseId: purchase.id,
+      idempotencyKey: normalizedIdempotencyKey,
+      userId: body.userId,
+      packageName: body.packageName,
+      payerEmail: body.payerEmail,
+      credits: selectedPackage.credits,
+      amountInCents,
+    });
 
     const updatedPurchase = await this.prisma.creditPurchase.update({
       where: {
