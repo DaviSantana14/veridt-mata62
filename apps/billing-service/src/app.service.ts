@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
 } from '@nestjs/common';
 import {
@@ -14,11 +15,36 @@ import {
   type CreditPurchase,
 } from './generated/prisma/client';
 import { BillingEventsPublisher } from './messaging/billing-events.publisher';
-import { MercadoPagoPaymentProvider } from './payments/mercado-pago-payment.provider';
+import { PAYMENT_PROVIDER } from './payments/payment-provider.interface';
 import { PrismaService } from './prisma/prisma.service';
 
 type PackageDefinition = CreditPackageResponse & {
   schemaName: CreditPackageName;
+};
+
+type CheckoutPreference = {
+  providerPreferenceId: string;
+  checkoutUrl: string;
+};
+
+type PaymentProviderPort = {
+  createCheckoutPreference(
+    input: PurchaseCreditsRequest & {
+      purchaseId: string;
+      idempotencyKey: string;
+      amountInCents: number;
+      credits: number;
+    },
+  ): Promise<CheckoutPreference>;
+  findCheckoutPreferenceByPurchaseId(
+    purchaseId: string,
+  ): Promise<CheckoutPreference | null>;
+  getPayment(paymentId: string): Promise<{
+    providerPaymentId: string;
+    status: string;
+    externalReference?: string;
+    approvedAt?: Date;
+  }>;
 };
 
 export type MockPurchaseResponse = PurchaseCreditsRequest & {
@@ -81,7 +107,8 @@ export class AppService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsPublisher: BillingEventsPublisher,
-    private readonly paymentProvider: MercadoPagoPaymentProvider,
+    @Inject(PAYMENT_PROVIDER)
+    private readonly paymentProvider: PaymentProviderPort,
   ) {}
 
   getHealth(): HealthResponse {

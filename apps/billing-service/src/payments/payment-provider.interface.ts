@@ -1,5 +1,7 @@
 import type { CreateCreditPurchaseRequest } from '@veridit/contracts';
 
+export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
+
 export type CreateCheckoutPreferenceInput = CreateCreditPurchaseRequest & {
   purchaseId: string;
   idempotencyKey: string;
