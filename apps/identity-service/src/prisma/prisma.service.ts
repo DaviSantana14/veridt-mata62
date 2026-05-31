@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
+// O segredo está nesta linha abaixo:
 import { PrismaClient } from '../generated/prisma/client';
 
 function getDatabaseUrl(): string {
