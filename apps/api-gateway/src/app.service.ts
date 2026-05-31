@@ -10,6 +10,8 @@ import {
   type StartCaptureRequest,
   type UserResponse,
 } from '@veridit/contracts';
+import { LoginDto } from './dto/login.dto';
+import process from 'process';
 
 export interface GatewayHealthResponse extends HealthResponse {
   downstream: Record<string, string>;
@@ -17,6 +19,14 @@ export interface GatewayHealthResponse extends HealthResponse {
 
 @Injectable()
 export class AppService {
+  login(body: LoginDto): Promise<{ mensagem: string; accessToken: string }> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/login',
+      body,
+    );
+  }
   private readonly urls = {
     identity:
       process.env.IDENTITY_SERVICE_URL ??

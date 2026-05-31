@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, HttpCode, HttpStatus } from '@nestjs/common';
+import { LoginDto } from './dto/login.dto'; // Adicione esta linha
 import type {
   ContentRecordResponse,
   CreditPackageResponse,
@@ -15,6 +16,12 @@ import { CreateUserDto } from './dto/create-user.dto';
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
+
+  @Post('identity/login')
+  @HttpCode(HttpStatus.OK)
+  login(@Body() body: LoginDto) {
+    return this.appService.login(body);
+  }
 
   @Get('health')
   getHealth(): GatewayHealthResponse {
