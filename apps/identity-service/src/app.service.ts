@@ -24,8 +24,10 @@ export class AppService {
     };
   }
 
-  // Esta é a função do seu colega (Cadastro)
   async createUser(body: RegisterUserRequest): Promise<UserResponse> {
+
+    const senhaTemporaria = await bcrypt.hash('123456', 10);
+
     const user = await this.prisma.user.create({
       data: {
         fullName: body.fullName,
@@ -33,7 +35,7 @@ export class AppService {
         cpf: body.cpf,
         profile: body.profile,
         oabNumber: body.oabNumber,
-        // Necessário adicionar passwordHash para que o login funcione
+        passwordHash: senhaTemporaria,
       },
     });
 

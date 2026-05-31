@@ -11,7 +11,6 @@ import {
   type UserResponse,
 } from '@veridit/contracts';
 import { LoginDto } from './dto/login.dto';
-import process from 'process';
 
 export interface GatewayHealthResponse extends HealthResponse {
   downstream: Record<string, string>;
