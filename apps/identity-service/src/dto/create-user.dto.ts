@@ -1,21 +1,61 @@
-import { IsEmail, IsIn, IsOptional, IsString, Length } from 'class-validator';
-import type { RegisterUserRequest } from '@veridit/contracts';
+import {
+  IsEmail,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
-export class CreateUserDto implements RegisterUserRequest {
+export class CreateUserDto {
   @IsString()
+  @IsNotEmpty({
+    message: 'Nome completo é obrigatório',
+  })
   fullName!: string;
 
-  @IsEmail()
+  @IsEmail(
+    {},
+    {
+      message: 'Email inválido',
+    },
+  )
+  @IsNotEmpty({
+    message: 'Email é obrigatório',
+  })
   email!: string;
 
   @IsString()
-  @Length(11, 14)
+  @IsNotEmpty({
+    message: 'CPF é obrigatório',
+  })
+  @Matches(/^\d{11}$/, {
+    message: 'CPF deve conter 11 números',
+  })
   cpf!: string;
 
-  @IsIn(['COMMON_USER', 'LAWYER'])
+  @IsString()
+  @MinLength(6, {
+    message: 'Senha deve ter no mínimo 6 caracteres',
+  })
+  @IsNotEmpty({
+    message: 'Senha é obrigatória',
+  })
+  password!: string;
+
+  @IsIn(['COMMON_USER', 'LAWYER'], {
+    message: 'Perfil inválido',
+  })
   profile!: 'COMMON_USER' | 'LAWYER';
 
-  @IsOptional()
+  @ValidateIf((o) => o.profile === 'LAWYER')
   @IsString()
+  @IsNotEmpty({
+    message: 'Número da OAB é obrigatório para advogados',
+  })
   oabNumber?: string;
 }
+
