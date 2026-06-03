@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { registerUser } from "@/lib/gateway";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { registerUser } from "@/lib/gateway";
+import { loginUser } from "@/lib/gateway";
 
 function SubmitIcon({ pending }: { pending: boolean }) {
   return pending ? (
@@ -36,25 +37,54 @@ function AuthNotice() {
       <ShieldCheck aria-hidden="true" />
       <AlertTitle>Acesso demonstrativo</AlertTitle>
       <AlertDescription>
-        Login e recuperação seguem simulados enquanto os serviços de autenticação ficam fora deste escopo.
+        Autenticação e recuperação seguem integradas ao gateway.
       </AlertDescription>
     </Alert>
   );
 }
 
+
 export function LoginForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending(true);
-    window.setTimeout(() => {
-      setPending(false);
-      toast.success("Acesso simulado com sucesso.");
-      router.push("/dashboard");
-    }, 350);
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  setPending(true);
+
+  const form = new FormData(event.currentTarget);
+
+  const email = String(form.get("email") ?? "");
+  const password = String(form.get("password") ?? "");
+
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:3101"}/auth/login`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      }
+    );
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      toast.error(data?.message || "Erro ao entrar");
+      return;
+    }
+
+    toast.success("Login realizado com sucesso.");
+    router.push("/dashboard");
+  } catch (error) {
+    toast.error("Erro de conexão com servidor");
+  } finally {
+    setPending(false);
   }
+}
 
   return (
     <Card className="premium-card w-full rounded-2xl">
@@ -64,8 +94,10 @@ export function LoginForm() {
           Acesse seu cofre de evidências e acompanhe registros digitais.
         </CardDescription>
       </CardHeader>
+
       <CardContent className="grid gap-5">
         <AuthNotice />
+
         <form onSubmit={onSubmit}>
           <FieldGroup>
             <Field>
@@ -74,34 +106,31 @@ export function LoginForm() {
                 id="email"
                 name="email"
                 type="email"
-                defaultValue="ana.silva@email.com"
                 autoComplete="email"
                 required
               />
             </Field>
+
             <Field>
-              <div className="flex items-center justify-between gap-4">
-                <FieldLabel htmlFor="password">Senha</FieldLabel>
-                <Link
-                  href="/recuperar-senha"
-                  className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                >
-                  Esqueceu a senha?
-                </Link>
-              </div>
+              <FieldLabel htmlFor="password">Senha</FieldLabel>
               <Input
                 id="password"
                 name="password"
                 type="password"
-                defaultValue="senha123"
                 autoComplete="current-password"
                 required
               />
             </Field>
-            <Button type="submit" disabled={pending} className="w-full shadow-[0_12px_28px_rgb(31_95_191/0.18)]">
+
+            <Button
+              type="submit"
+              disabled={pending}
+              className="w-full"
+            >
               <SubmitIcon pending={pending} />
               Entrar
             </Button>
+
             <FieldDescription className="text-center">
               Não tem uma conta?{" "}
               <Link className="font-medium text-primary" href="/cadastro">
@@ -115,6 +144,7 @@ export function LoginForm() {
   );
 }
 
+
 export function RegisterForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -124,26 +154,31 @@ export function RegisterForm() {
     setPending(true);
 
     const form = new FormData(event.currentTarget);
+
+    const firstName = String(form.get("firstName"));
+    const lastName = String(form.get("lastName"));
+    const cpf = String(form.get("cpf")).replace(/\D/g, "");
+    const phone = String(form.get("phone"));
+    const email = String(form.get("email"));
+    const password = String(form.get("password"));
+
     const result = await registerUser({
-      firstName: String(form.get("firstName") ?? ""),
-      lastName: String(form.get("lastName") ?? ""),
-      cpf: String(form.get("cpf") ?? ""),
-      phone: String(form.get("phone") ?? ""),
-      email: String(form.get("email") ?? ""),
-      password: String(form.get("password") ?? ""),
+      fullName: `${firstName} ${lastName}`.trim(),
+      cpf,
+      phone,
+      email,
+      password,
+      profile: "COMMON_USER",
     });
 
     setPending(false);
 
-    if (result.ok) {
-      toast.success("Conta criada com sucesso.");
-      router.push("/dashboard");
+    if (!result.ok) {
+      toast.error(result.message || "Erro ao criar conta");
       return;
     }
 
-    toast.warning("Cadastro simulado. API Gateway indisponível.", {
-      description: result.message,
-    });
+    toast.success("Conta criada com sucesso.");
     router.push("/dashboard");
   }
 
@@ -152,71 +187,52 @@ export function RegisterForm() {
       <CardHeader>
         <CardTitle className="text-2xl">Criar Conta</CardTitle>
         <CardDescription>
-          Informe seus dados para acessar a área demonstrativa do Veridit.
+          Informe seus dados para acessar a plataforma.
         </CardDescription>
       </CardHeader>
+
       <CardContent className="grid gap-5">
-        <Alert className="border-[color:var(--evidence)]/20 bg-teal-50">
-          <ShieldCheck aria-hidden="true" />
-          <AlertTitle>Cadastro com fallback</AlertTitle>
-          <AlertDescription>
-            A tela tenta o gateway em <span className="font-mono">/identity/users</span> e segue com simulação se a API estiver indisponível.
-          </AlertDescription>
-        </Alert>
         <form onSubmit={onSubmit}>
           <FieldGroup>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="firstName">Nome</FieldLabel>
-                <Input id="firstName" name="firstName" defaultValue="Ana Carolina" required />
+                <Input id="firstName" name="firstName" required />
               </Field>
+
               <Field>
                 <FieldLabel htmlFor="lastName">Sobrenome</FieldLabel>
-                <Input id="lastName" name="lastName" defaultValue="Silva" required />
+                <Input id="lastName" name="lastName" required />
               </Field>
             </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="cpf">CPF</FieldLabel>
-                <Input id="cpf" name="cpf" defaultValue="123.456.789-00" required />
+                <Input id="cpf" name="cpf" required />
               </Field>
+
               <Field>
                 <FieldLabel htmlFor="phone">Telefone</FieldLabel>
-                <Input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  defaultValue="(11) 98765-4321"
-                  required
-                />
+                <Input id="phone" name="phone" type="tel" required />
               </Field>
             </div>
+
             <Field>
-              <FieldLabel htmlFor="register-email">E-mail</FieldLabel>
-              <Input
-                id="register-email"
-                name="email"
-                type="email"
-                defaultValue="ana.silva@email.com"
-                autoComplete="email"
-                required
-              />
+              <FieldLabel htmlFor="email">E-mail</FieldLabel>
+              <Input id="email" name="email" type="email" required />
             </Field>
+
             <Field>
-              <FieldLabel htmlFor="register-password">Senha</FieldLabel>
-              <Input
-                id="register-password"
-                name="password"
-                type="password"
-                defaultValue="senha123"
-                autoComplete="new-password"
-                required
-              />
+              <FieldLabel htmlFor="password">Senha</FieldLabel>
+              <Input id="password" name="password" type="password" required />
             </Field>
-            <Button type="submit" disabled={pending} className="w-full shadow-[0_12px_28px_rgb(31_95_191/0.18)]">
+
+            <Button type="submit" disabled={pending} className="w-full">
               <SubmitIcon pending={pending} />
               Cadastrar
             </Button>
+
             <FieldDescription className="text-center">
               Já tem uma conta?{" "}
               <Link className="font-medium text-primary" href="/login">
@@ -236,9 +252,10 @@ export function RecoverPasswordForm() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
+
     window.setTimeout(() => {
       setPending(false);
-      toast.success("Instruções enviadas para ana.silva@email.com.");
+      toast.success("Instruções enviadas para seu e-mail.");
     }, 350);
   }
 
@@ -247,11 +264,11 @@ export function RecoverPasswordForm() {
       <CardHeader>
         <CardTitle className="text-2xl">Recuperar Senha</CardTitle>
         <CardDescription>
-          Informe seu e-mail para receber as instruções de recuperação.
+          Informe seu e-mail para recuperação.
         </CardDescription>
       </CardHeader>
+
       <CardContent className="grid gap-5">
-        <AuthNotice />
         <form onSubmit={onSubmit}>
           <FieldGroup>
             <Field>
@@ -260,16 +277,18 @@ export function RecoverPasswordForm() {
                 id="recover-email"
                 name="email"
                 type="email"
-                defaultValue="ana.silva@email.com"
-                autoComplete="email"
                 required
               />
             </Field>
+
             <Button type="submit" disabled={pending} className="w-full">
               <SubmitIcon pending={pending} />
               Enviar Instruções
-              {!pending ? <ArrowRight data-icon="inline-end" aria-hidden="true" /> : null}
+              {!pending ? (
+                <ArrowRight data-icon="inline-end" aria-hidden="true" />
+              ) : null}
             </Button>
+
             <FieldDescription className="text-center">
               <Link className="font-medium text-primary" href="/login">
                 Voltar para o login
