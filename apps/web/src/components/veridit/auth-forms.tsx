@@ -147,8 +147,11 @@ export function LoginForm() {
 
 export function RegisterForm() {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
 
+  const [pending, setPending] = useState(false);
+  const [profile, setProfile] = useState<"COMMON_USER" | "LAWYER">(
+    "COMMON_USER"
+  );
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -161,6 +164,7 @@ export function RegisterForm() {
     const phone = String(form.get("phone"));
     const email = String(form.get("email"));
     const password = String(form.get("password"));
+    const oabNumber = String(form.get("oab") ?? "");
 
     const result = await registerUser({
       fullName: `${firstName} ${lastName}`.trim(),
@@ -168,8 +172,10 @@ export function RegisterForm() {
       phone,
       email,
       password,
-      profile: "COMMON_USER",
+      profile,
+      ...(profile === "LAWYER" ? { oabNumber } : {}),
     });
+
 
     setPending(false);
 
@@ -191,7 +197,26 @@ export function RegisterForm() {
         </CardDescription>
       </CardHeader>
 
+      
+
       <CardContent className="grid gap-5">
+        <div className="grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          variant={profile === "COMMON_USER" ? "default" : "outline"}
+          onClick={() => setProfile("COMMON_USER")}
+        >
+          Usuário
+        </Button>
+
+        <Button
+          type="button"
+          variant={profile === "LAWYER" ? "default" : "outline"}
+          onClick={() => setProfile("LAWYER")}
+        >
+          Advogado
+        </Button>
+      </div>
         <form onSubmit={onSubmit}>
           <FieldGroup>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -217,6 +242,19 @@ export function RegisterForm() {
                 <Input id="phone" name="phone" type="tel" required />
               </Field>
             </div>
+
+            {profile === "LAWYER" && (
+              <Field>
+                <FieldLabel htmlFor="oab">Número da OAB</FieldLabel>
+                <Input
+                  id="oab"
+                  name="oab"
+                  placeholder="Ex: BA12345"
+                  maxLength={12}
+                  required={profile === "LAWYER"}
+                />
+              </Field>
+            )}
 
             <Field>
               <FieldLabel htmlFor="email">E-mail</FieldLabel>

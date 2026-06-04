@@ -88,6 +88,7 @@ export function registerUser(payload: {
   email: string;
   password: string;
   profile: string;
+  oabNumber?: string;
 }) {
   return requestGateway<{ id: string }>("/users", {
     method: "POST",
