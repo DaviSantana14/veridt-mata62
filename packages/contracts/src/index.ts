@@ -34,6 +34,7 @@ export interface HealthResponse {
 export interface RegisterUserRequest {
   fullName: string;
   email: string;
+  password: string;
   cpf: string;
   profile: "COMMON_USER" | "LAWYER";
   oabNumber?: string;

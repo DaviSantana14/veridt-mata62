@@ -28,6 +28,10 @@ export class CreateUserDto {
   })
   email!: string;
 
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
   @IsString()
   @IsNotEmpty({
     message: 'CPF é obrigatório',

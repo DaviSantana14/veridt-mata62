@@ -1,7 +1,5 @@
-const gatewayUrl =
-  process.env.NEXT_PUBLIC_API_GATEWAY_URL ??
-  process.env.API_GATEWAY_URL ??
-  "http://localhost:3001";
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:3101";
 
 type GatewayResult<T> =
   | { ok: true; data: T }
@@ -12,51 +10,41 @@ async function requestGateway<T>(
   init?: RequestInit,
 ): Promise<GatewayResult<T>> {
   try {
-    const response = await fetch(`${gatewayUrl}${path}`, {
+    const url = `${BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+
+    const response = await fetch(url, {
       ...init,
       headers: {
-        "content-type": "application/json",
-        ...init?.headers,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
       },
     });
 
     const text = await response.text();
-    const payload = text ? (JSON.parse(text) as T) : ({} as T);
+    const data = text ? JSON.parse(text) : null;
 
     if (!response.ok) {
       return {
         ok: false,
         status: response.status,
-        message: `Gateway respondeu com status ${response.status}.`,
+        message: data?.message ?? `Erro ${response.status}`,
       };
     }
 
-    return { ok: true, data: payload };
+    return {
+      ok: true,
+      data: data as T,
+    };
   } catch (error) {
     return {
       ok: false,
       message:
         error instanceof Error
           ? error.message
-          : "Não foi possível falar com o API Gateway.",
+          : "Erro de conexão com gateway",
     };
   }
 }
-
-export function registerUser(payload: {
-  firstName: string;
-  lastName: string;
-  cpf: string;
-  phone: string;
-  email: string;
-  password: string;
-}) {
-  return requestGateway<{ id: string; email: string }>("/identity/users", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
 export function startMockCapture(payload: {
   userId: string;
   title: string;
@@ -80,6 +68,32 @@ export function createMockPurchase(payload: {
       body: JSON.stringify(payload),
     },
   );
+}
+
+export function loginUser(payload: {
+  email: string;
+  password: string;
+}) {
+  return requestGateway<{ token: string; user: any }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    credentials: "include",
+  });
+}
+
+export function registerUser(payload: {
+  fullName: string;
+  cpf: string;
+  phone: string;
+  email: string;
+  password: string;
+  profile: string;
+  oabNumber?: string;
+}) {
+  return requestGateway<{ id: string }>("/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getGatewayPlans() {
