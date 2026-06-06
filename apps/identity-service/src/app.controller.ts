@@ -1,10 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  ValidationPipe,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, ValidationPipe } from '@nestjs/common';
 
 import type {
   AuthResponse,
@@ -19,9 +13,7 @@ import { LoginUserDto } from './dto/login-user-dto';
 
 @Controller()
 export class AppController {
-  constructor(
-    private readonly appService: AppService,
-  ) {}
+  constructor(private readonly appService: AppService) {}
 
   @Get('health')
   getHealth(): HealthResponse {
@@ -50,8 +42,7 @@ export class AppController {
       }),
     )
     body: LoginUserDto,
-  ): Promise<AuthResponse & { accessToken: string }> {
+  ): Promise<AuthResponse> {
     return this.appService.login(body);
   }
 }
-

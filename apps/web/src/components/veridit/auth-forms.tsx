@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-import { registerUser } from "@/lib/gateway";
+import { loginUser, registerUser } from "@/lib/gateway";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,14 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { loginUser } from "@/lib/gateway";
 
 function SubmitIcon({ pending }: { pending: boolean }) {
   return pending ? (
-    <Loader2 data-icon="inline-start" className="animate-spin" aria-hidden="true" />
+    <Loader2
+      data-icon="inline-start"
+      className="animate-spin"
+      aria-hidden="true"
+    />
   ) : null;
 }
 
@@ -41,50 +44,38 @@ function AuthNotice() {
       </AlertDescription>
     </Alert>
   );
-}
 
+}
 
 export function LoginForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
-  event.preventDefault();
-  setPending(true);
+    event.preventDefault();
+    setPending(true);
 
-  const form = new FormData(event.currentTarget);
+    const form = new FormData(event.currentTarget);
 
-  const email = String(form.get("email") ?? "");
-  const password = String(form.get("password") ?? "");
+    const email = String(form.get("email") ?? "");
+    const password = String(form.get("password") ?? "");
 
-  try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:3101"}/auth/login`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
+    try {
+      const result = await loginUser({ email, password });
+
+      if (!result.ok) {
+        toast.error(result.message || "Erro ao entrar");
+        return;
       }
-    );
 
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok) {
-      toast.error(data?.message || "Erro ao entrar");
-      return;
+      toast.success("Login realizado com sucesso.");
+      router.push("/dashboard");
+    } catch {
+      toast.error("Erro de conexão com servidor");
+    } finally {
+      setPending(false);
     }
-
-    toast.success("Login realizado com sucesso.");
-    router.push("/dashboard");
-  } catch (error) {
-    toast.error("Erro de conexão com servidor");
-  } finally {
-    setPending(false);
   }
-}
 
   return (
     <Card className="premium-card w-full rounded-2xl">
@@ -122,11 +113,7 @@ export function LoginForm() {
               />
             </Field>
 
-            <Button
-              type="submit"
-              disabled={pending}
-              className="w-full"
-            >
+            <Button type="submit" disabled={pending} className="w-full">
               <SubmitIcon pending={pending} />
               Entrar
             </Button>
@@ -142,15 +129,15 @@ export function LoginForm() {
       </CardContent>
     </Card>
   );
-}
 
+}
 
 export function RegisterForm() {
   const router = useRouter();
 
   const [pending, setPending] = useState(false);
   const [profile, setProfile] = useState<"COMMON_USER" | "LAWYER">(
-    "COMMON_USER"
+    "COMMON_USER",
   );
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -176,7 +163,6 @@ export function RegisterForm() {
       ...(profile === "LAWYER" ? { oabNumber } : {}),
     });
 
-
     setPending(false);
 
     if (!result.ok) {
@@ -196,27 +182,24 @@ export function RegisterForm() {
           Informe seus dados para acessar a plataforma.
         </CardDescription>
       </CardHeader>
-
-      
-
       <CardContent className="grid gap-5">
         <div className="grid grid-cols-2 gap-2">
-        <Button
-          type="button"
-          variant={profile === "COMMON_USER" ? "default" : "outline"}
-          onClick={() => setProfile("COMMON_USER")}
-        >
-          Usuário
-        </Button>
+          <Button
+            type="button"
+            variant={profile === "COMMON_USER" ? "default" : "outline"}
+            onClick={() => setProfile("COMMON_USER")}
+          >
+            Usuário
+          </Button>
 
-        <Button
-          type="button"
-          variant={profile === "LAWYER" ? "default" : "outline"}
-          onClick={() => setProfile("LAWYER")}
-        >
-          Advogado
-        </Button>
-      </div>
+          <Button
+            type="button"
+            variant={profile === "LAWYER" ? "default" : "outline"}
+            onClick={() => setProfile("LAWYER")}
+          >
+            Advogado
+          </Button>
+        </div>
         <form onSubmit={onSubmit}>
           <FieldGroup>
             <div className="grid gap-4 sm:grid-cols-2">

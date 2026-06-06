@@ -4,7 +4,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  Length,
   Matches,
   MinLength,
   ValidateIf,
@@ -55,11 +54,10 @@ export class CreateUserDto {
   })
   profile!: 'COMMON_USER' | 'LAWYER';
 
-  @ValidateIf((o) => o.profile === 'LAWYER')
+  @ValidateIf((o: CreateUserDto) => o.profile === 'LAWYER')
   @IsString()
   @IsNotEmpty({
     message: 'Número da OAB é obrigatório para advogados',
   })
   oabNumber?: string;
 }
-

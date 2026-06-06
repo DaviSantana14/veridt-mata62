@@ -1,5 +1,5 @@
 const BASE_URL =
-  process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:3101";
+  process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:3001";
 
 type GatewayResult<T> =
   | { ok: true; data: T }
@@ -74,7 +74,15 @@ export function loginUser(payload: {
   email: string;
   password: string;
 }) {
-  return requestGateway<{ token: string; user: any }>("/auth/login", {
+  return requestGateway<{
+    accessToken: string;
+    user: {
+      id: string;
+      fullName: string;
+      email: string;
+      profile: "COMMON_USER" | "LAWYER";
+    };
+  }>("/identity/auth/login", {
     method: "POST",
     body: JSON.stringify(payload),
     credentials: "include",
@@ -90,7 +98,7 @@ export function registerUser(payload: {
   profile: string;
   oabNumber?: string;
 }) {
-  return requestGateway<{ id: string }>("/users", {
+  return requestGateway<{ id: string }>("/identity/users", {
     method: "POST",
     body: JSON.stringify(payload),
   });

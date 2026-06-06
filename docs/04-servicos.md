@@ -11,6 +11,7 @@ Entrada HTTP para o frontend. Rotas atuais:
 - `GET /health`
 - `GET /identity/health`
 - `POST /identity/users`
+- `POST /identity/auth/login`
 - `GET /billing/health`
 - `GET /billing/packages`
 - `POST /billing/purchases/mock`
