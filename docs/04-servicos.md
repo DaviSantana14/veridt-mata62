@@ -11,6 +11,7 @@ Entrada HTTP para o frontend. Rotas atuais:
 - `GET /health`
 - `GET /identity/health`
 - `POST /identity/users`
+- `POST /identity/auth/login`
 - `GET /billing/health`
 - `GET /billing/packages`
 - `POST /billing/purchases/mock`
@@ -19,7 +20,7 @@ Entrada HTTP para o frontend. Rotas atuais:
 
 ## `apps/identity-service`
 
-Responsável por usuários, perfis e recuperação de senha. Hoje tem cadastro mock persistido, sem senha/JWT completo.
+Responsável por usuários, perfis e recuperação de senha. Publica `identity.user_registered` após o cadastro para disparar email de boas-vindas sem bloquear a resposta ao usuário.
 
 ## `apps/billing-service`
 
@@ -31,7 +32,7 @@ Responsável por registros de conteúdo e assets capturados. Hoje cria uma captu
 
 ## `apps/notification-service`
 
-Responsável por notificações. Hoje consome `billing.credit_purchased` e persiste uma notificação de email mock.
+Responsável por notificações. Consome `identity.user_registered` e `billing.credit_purchased`, envia emails por SMTP via Gmail/Nodemailer e persiste o status da tentativa (`PENDING`, `SENT` ou `FAILED`).
 
 ## `apps/report-service`
 

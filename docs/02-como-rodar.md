@@ -31,6 +31,25 @@ Copy-Item apps/web/.env.example apps/web/.env.local
 
 Esses arquivos `.env` ficam fora do Git. Ajuste os valores quando trocar portas, bancos ou integrações externas.
 
+## Email local com Gmail
+
+O `notification-service` envia emails por SMTP usando Gmail. Para testar localmente:
+
+1. Ative a verificação em duas etapas na conta Google.
+2. Gere uma senha de app no Google.
+3. Preencha no `apps/notification-service/.env`:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=seuemail@gmail.com
+SMTP_PASS=sua_senha_de_app_do_google
+EMAIL_FROM="Veridit <seuemail@gmail.com>"
+```
+
+Use senha de app, não a senha normal da conta Google. Essa configuração é indicada para localhost e demo pequena, não para produção.
+
 ## Infraestrutura
 
 Suba PostgreSQL e RabbitMQ:

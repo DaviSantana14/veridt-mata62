@@ -13,6 +13,7 @@ export const RMQ_QUEUES = {
 } as const;
 
 export const VERIDIT_EVENTS = {
+  userRegistered: "identity.user_registered",
   creditPurchased: "billing.credit_purchased",
   captureCompleted: "capture.completed",
 } as const;
@@ -34,9 +35,15 @@ export interface HealthResponse {
 export interface RegisterUserRequest {
   fullName: string;
   email: string;
+  password: string;
   cpf: string;
   profile: "COMMON_USER" | "LAWYER";
   oabNumber?: string;
+}
+
+export interface LoginUserRequest {
+  email: string;
+  password: string;
 }
 
 export interface UserResponse {
@@ -46,6 +53,25 @@ export interface UserResponse {
   cpf: string;
   profile: "COMMON_USER" | "LAWYER";
   createdAt: string;
+}
+
+export interface AuthResponse {
+  message: string;
+  accessToken: string;
+  user: {
+    id: string;
+    fullName: string;
+    email: string;
+    profile: "COMMON_USER" | "LAWYER";
+  };
+}
+
+export interface UserRegisteredEvent {
+  userId: string;
+  fullName: string;
+  email: string;
+  profile: "COMMON_USER" | "LAWYER";
+  occurredAt: string;
 }
 
 export interface CreditPackageResponse {

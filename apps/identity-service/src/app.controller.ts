@@ -1,8 +1,15 @@
-import { Body, Controller, Get, Post, HttpCode, HttpStatus } from '@nestjs/common';
-import type { HealthResponse, UserResponse } from '@veridit/contracts';
+import { Body, Controller, Get, Post } from '@nestjs/common';
+
+import type {
+  AuthResponse,
+  HealthResponse,
+  UserResponse,
+} from '@veridit/contracts';
+
 import { AppService } from './app.service';
+
 import { CreateUserDto } from './dto/create-user.dto';
-import { LoginDto } from './dto/login.dto';
+import { LoginUserDto } from './dto/login-user-dto';
 
 @Controller()
 export class AppController {
@@ -14,13 +21,12 @@ export class AppController {
   }
 
   @Post('users')
-  createUser(@Body() body: CreateUserDto): Promise<UserResponse> {
+  async createUser(@Body() body: CreateUserDto): Promise<UserResponse> {
     return this.appService.createUser(body);
   }
 
-  @Post('login')
-  @HttpCode(HttpStatus.OK) 
-  async login(@Body() body: LoginDto) {
-    return await this.appService.login(body);
+  @Post('auth/login')
+  async login(@Body() body: LoginUserDto): Promise<AuthResponse> {
+    return this.appService.login(body);
   }
 }

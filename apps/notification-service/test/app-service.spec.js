@@ -1,0 +1,202 @@
+const assert = require('node:assert').strict;
+const { AppService } = require('../dist/src/app.service.js');
+
+function makeEvent() {
+  return {
+    purchaseId: 'purchase-1',
+    userId: 'user-1',
+    packageName: 'basic',
+    credits: 10,
+    payerEmail: 'buyer@example.com',
+    occurredAt: '2026-06-06T12:00:00.000Z',
+  };
+}
+
+function makeUserRegisteredEvent() {
+  return {
+    userId: 'user-1',
+    fullName: 'Ana Silva',
+    email: 'ana@example.com',
+    profile: 'COMMON_USER',
+    occurredAt: '2026-06-06T12:00:00.000Z',
+  };
+}
+
+function makeNotification(status, recipient = 'buyer@example.com') {
+  return {
+    id: 'notification-1',
+    recipient,
+    status,
+    createdAt: new Date('2026-06-06T12:00:00.000Z'),
+  };
+}
+
+function makePrisma(updates, onUpdate) {
+  let createdRecipient = 'buyer@example.com';
+
+  return {
+    notification: {
+      create(input) {
+        assert.equal(input.data.status, 'PENDING');
+        createdRecipient = input.data.recipient;
+        return Promise.resolve(makeNotification('PENDING', createdRecipient));
+      },
+      update(input) {
+        updates.push(input);
+
+        if (onUpdate) {
+          return onUpdate(input);
+        }
+
+        return Promise.resolve(makeNotification(input.data.status, createdRecipient));
+      },
+    },
+  };
+}
+
+async function marksSuccessfulSendAsSent() {
+  const updates = [];
+  const emailProvider = {
+    sendEmail() {
+      return Promise.resolve({ messageId: 'gmail-message-123' });
+    },
+  };
+  const service = new AppService(makePrisma(updates), emailProvider);
+
+  const response = await service.createCreditPurchaseEmail(makeEvent());
+
+  assert.equal(response.status, 'SENT');
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.data.status, 'SENT');
+  assert.equal(updates[0]?.data.providerMessageId, 'gmail-message-123');
+  assert.ok(updates[0]?.data.sentAt instanceof Date);
+}
+
+async function marksSendFailureAsFailed() {
+  const updates = [];
+  const emailProvider = {
+    sendEmail() {
+      return Promise.reject(new Error('smtp rejected credentials'));
+    },
+  };
+  const service = new AppService(makePrisma(updates), emailProvider);
+
+  const response = await service.createCreditPurchaseEmail(makeEvent());
+
+  assert.equal(response.status, 'FAILED');
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.data.status, 'FAILED');
+  assert.equal(updates[0]?.data.errorMessage, 'smtp rejected credentials');
+  assert.ok(updates[0]?.data.failedAt instanceof Date);
+}
+
+async function doesNotMarkSentEmailAsFailedWhenSentUpdateFails() {
+  const updates = [];
+  const emailProvider = {
+    sendEmail() {
+      return Promise.resolve({ messageId: 'gmail-message-123' });
+    },
+  };
+  const prisma = makePrisma(updates, (input) => {
+    if (input.data.status === 'SENT') {
+      return Promise.reject(new Error('sent update failed'));
+    }
+
+    return Promise.resolve(makeNotification(input.data.status));
+  });
+  const service = new AppService(prisma, emailProvider);
+
+  await assert.rejects(
+    () => service.createCreditPurchaseEmail(makeEvent()),
+    /sent update failed/,
+  );
+  assert.deepEqual(
+    updates.map((update) => update.data.status),
+    ['SENT'],
+  );
+}
+
+async function sendsWelcomeEmailForRegisteredUser() {
+  const updates = [];
+  const sentEmails = [];
+  const emailProvider = {
+    sendEmail(input) {
+      sentEmails.push(input);
+      return Promise.resolve({ messageId: 'welcome-message-123' });
+    },
+  };
+  const service = new AppService(makePrisma(updates), emailProvider);
+
+  const response = await service.createUserRegisteredEmail(
+    makeUserRegisteredEvent(),
+  );
+
+  assert.equal(response.recipient, 'ana@example.com');
+  assert.equal(response.status, 'SENT');
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.data.status, 'SENT');
+  assert.equal(updates[0]?.data.providerMessageId, 'welcome-message-123');
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0]?.to, 'ana@example.com');
+  assert.match(sentEmails[0]?.subject, /Bem-vindo/);
+}
+
+async function marksWelcomeSendFailureAsFailed() {
+  const updates = [];
+  const emailProvider = {
+    sendEmail() {
+      return Promise.reject(new Error('smtp rejected welcome email'));
+    },
+  };
+  const service = new AppService(makePrisma(updates), emailProvider);
+
+  const response = await service.createUserRegisteredEmail(
+    makeUserRegisteredEvent(),
+  );
+
+  assert.equal(response.status, 'FAILED');
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.data.status, 'FAILED');
+  assert.equal(updates[0]?.data.errorMessage, 'smtp rejected welcome email');
+  assert.ok(updates[0]?.data.failedAt instanceof Date);
+}
+
+async function doesNotMarkWelcomeEmailAsFailedWhenSentUpdateFails() {
+  const updates = [];
+  const emailProvider = {
+    sendEmail() {
+      return Promise.resolve({ messageId: 'welcome-message-123' });
+    },
+  };
+  const prisma = makePrisma(updates, (input) => {
+    if (input.data.status === 'SENT') {
+      return Promise.reject(new Error('welcome sent update failed'));
+    }
+
+    return Promise.resolve(makeNotification(input.data.status));
+  });
+  const service = new AppService(prisma, emailProvider);
+
+  await assert.rejects(
+    () => service.createUserRegisteredEmail(makeUserRegisteredEvent()),
+    /welcome sent update failed/,
+  );
+  assert.deepEqual(
+    updates.map((update) => update.data.status),
+    ['SENT'],
+  );
+}
+
+async function main() {
+  await marksSuccessfulSendAsSent();
+  await marksSendFailureAsFailed();
+  await doesNotMarkSentEmailAsFailedWhenSentUpdateFails();
+  await sendsWelcomeEmailForRegisteredUser();
+  await marksWelcomeSendFailureAsFailed();
+  await doesNotMarkWelcomeEmailAsFailedWhenSentUpdateFails();
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

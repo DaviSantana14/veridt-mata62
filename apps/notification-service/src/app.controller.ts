@@ -4,6 +4,7 @@ import {
   VERIDIT_EVENTS,
   type CreditPurchaseCreatedEvent,
   type HealthResponse,
+  type UserRegisteredEvent,
 } from '@veridit/contracts';
 import { AppService } from './app.service';
 import type { NotificationResponse } from './app.service';
@@ -22,5 +23,12 @@ export class AppController {
     @Payload() event: CreditPurchaseCreatedEvent,
   ): Promise<NotificationResponse> {
     return this.appService.createCreditPurchaseEmail(event);
+  }
+
+  @EventPattern(VERIDIT_EVENTS.userRegistered)
+  handleUserRegistered(
+    @Payload() event: UserRegisteredEvent,
+  ): Promise<NotificationResponse> {
+    return this.appService.createUserRegisteredEmail(event);
   }
 }

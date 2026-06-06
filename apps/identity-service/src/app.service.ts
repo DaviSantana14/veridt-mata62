@@ -1,19 +1,31 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+
+import { JwtService } from '@nestjs/jwt';
+
+import * as bcrypt from 'bcrypt';
+
 import type {
+  AuthResponse,
   HealthResponse,
-  RegisterUserRequest,
   UserResponse,
 } from '@veridit/contracts';
-import * as bcrypt from 'bcrypt';
-import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from './prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+
+import { CreateUserDto } from './dto/create-user.dto';
+import { LoginUserDto } from './dto/login-user-dto';
+import { UserEventsPublisher } from './messaging/user-events.publisher';
 
 @Injectable()
 export class AppService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService 
+    private readonly jwtService: JwtService,
+    private readonly userEventsPublisher: UserEventsPublisher,
   ) {}
 
   getHealth(): HealthResponse {
@@ -24,19 +36,40 @@ export class AppService {
     };
   }
 
-  async createUser(body: RegisterUserRequest): Promise<UserResponse> {
+  async createUser(body: CreateUserDto): Promise<UserResponse> {
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [{ email: body.email }, { cpf: body.cpf }],
+      },
+    });
 
-    const senhaTemporaria = await bcrypt.hash('123456', 10);
+    if (existingUser) {
+      throw new BadRequestException('Usuário já cadastrado');
+    }
+
+    if (body.profile === 'LAWYER' && !body.oabNumber) {
+      throw new BadRequestException('Advogado precisa informar OAB');
+    }
+
+    const passwordHash = await bcrypt.hash(body.password, 10);
 
     const user = await this.prisma.user.create({
       data: {
-        fullName: body.fullName,
-        email: body.email,
-        cpf: body.cpf,
+        fullName: body.fullName.trim(),
+        email: body.email.toLowerCase().trim(),
+        cpf: body.cpf.trim(),
+        passwordHash,
         profile: body.profile,
-        oabNumber: body.oabNumber,
-        passwordHash: senhaTemporaria,
+        oabNumber: body.oabNumber?.trim(),
       },
+    });
+
+    this.userEventsPublisher.publishUserRegistered({
+      userId: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      profile: user.profile,
+      occurredAt: user.createdAt.toISOString(),
     });
 
     return {
@@ -49,32 +82,43 @@ export class AppService {
     };
   }
 
-  async login(dadosDeLogin: LoginDto) {
-    const utilizador = await this.prisma.user.findUnique({
-      where: { email: dadosDeLogin.email },
+  async login(body: LoginUserDto): Promise<AuthResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        email: body.email.toLowerCase().trim(),
+      },
     });
 
-    if (!utilizador || !utilizador.passwordHash) {
-      throw new UnauthorizedException('E-mail ou senha inválidos');
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('Email ou senha inválidos');
     }
 
-    const senhaEstaCorreta = await bcrypt.compare(dadosDeLogin.password, utilizador.passwordHash);
+    const passwordMatch = await bcrypt.compare(
+      body.password,
+      user.passwordHash,
+    );
 
-    if (!senhaEstaCorreta) {
-      throw new UnauthorizedException('E-mail ou senha inválidos');
+    if (!passwordMatch) {
+      throw new UnauthorizedException('Email ou senha inválidos');
     }
 
-    const payload = { 
-      sub: utilizador.id, 
-      email: utilizador.email, 
-      profile: utilizador.profile 
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      profile: user.profile,
     };
 
-    const token = await this.jwtService.signAsync(payload);
+    const accessToken = await this.jwtService.signAsync(payload);
 
     return {
-      mensagem: 'Login aprovado!',
-      accessToken: token,
+      message: 'Login realizado com sucesso',
+      accessToken,
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        profile: user.profile,
+      },
     };
   }
 }

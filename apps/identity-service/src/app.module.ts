@@ -1,19 +1,22 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt'; // <-- Importação nova
+import { JwtModule } from '@nestjs/jwt';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { UserEventsPublisher } from './messaging/user-events.publisher';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
     PrismaModule,
     JwtModule.register({
-      global: true,
-      secret: 'chave-super-secreta-do-veridt',
-      signOptions: { expiresIn: '8h' },
+      secret: process.env.JWT_SECRET || 'secret',
+      signOptions: {
+        expiresIn: '1d',
+      },
     }),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, UserEventsPublisher],
 })
 export class AppModule {}

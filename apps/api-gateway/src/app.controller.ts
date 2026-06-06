@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, HttpCode, HttpStatus } from '@nestjs/common';
 import { LoginDto } from './dto/login.dto'; // Adicione esta linha
 import type {
+  AuthResponse,
   ContentRecordResponse,
   CreditPackageResponse,
   HealthResponse,
@@ -12,6 +13,7 @@ import type { GatewayHealthResponse } from './app.service';
 import { MockCaptureDto } from './dto/mock-capture.dto';
 import { MockPurchaseDto } from './dto/mock-purchase.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { LoginUserDto } from './dto/login-user.dto';
 
 @Controller()
 export class AppController {
@@ -36,6 +38,11 @@ export class AppController {
   @Post('identity/users')
   createUser(@Body() body: CreateUserDto): Promise<UserResponse> {
     return this.appService.createUser(body);
+  }
+
+  @Post('identity/auth/login')
+  loginUser(@Body() body: LoginUserDto): Promise<AuthResponse> {
+    return this.appService.loginUser(body);
   }
 
   @Get('billing/health')

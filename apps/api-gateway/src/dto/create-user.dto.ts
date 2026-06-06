@@ -12,6 +12,9 @@ export class CreateUserDto implements RegisterUserRequest {
   @Length(11, 14)
   cpf!: string;
 
+  @IsString()
+  password!: string;
+
   @IsIn(['COMMON_USER', 'LAWYER'])
   profile!: 'COMMON_USER' | 'LAWYER';
 

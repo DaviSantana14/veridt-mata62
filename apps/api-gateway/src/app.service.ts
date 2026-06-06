@@ -1,9 +1,11 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
 import {
   SERVICE_PORTS,
+  type AuthResponse,
   type ContentRecordResponse,
   type CreditPackageResponse,
   type HealthResponse,
+  type LoginUserRequest,
   type PurchaseCreditsRequest,
   type RegisterUserRequest,
   type ServiceName,
@@ -66,6 +68,15 @@ export class AppService {
       'identity-service',
       this.urls.identity,
       '/users',
+      body,
+    );
+  }
+
+  loginUser(body: LoginUserRequest): Promise<AuthResponse> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/auth/login',
       body,
     );
   }
