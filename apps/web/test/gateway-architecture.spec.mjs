@@ -36,6 +36,11 @@ assert.match(
   /["']\/identity\/auth\/login["']/,
   'loginUser must call the API Gateway identity login route',
 );
+assert.doesNotMatch(
+  gateway,
+  /credentials:\s*["']include["']/,
+  'web gateway helpers must not request browser credentials while auth uses accessToken',
+);
 assert.match(
   gateway,
   /requestGateway<\{ id: string \}>\(["']\/identity\/users["']/,

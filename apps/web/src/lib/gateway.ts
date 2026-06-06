@@ -85,7 +85,6 @@ export function loginUser(payload: {
   }>("/identity/auth/login", {
     method: "POST",
     body: JSON.stringify(payload),
-    credentials: "include",
   });
 }
 
