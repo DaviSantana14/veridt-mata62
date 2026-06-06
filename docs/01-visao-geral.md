@@ -19,7 +19,7 @@ Este repositório não implementa o produto completo. Ele entrega uma fundação
 - Os serviços têm health check.
 - Os serviços com banco têm Prisma configurado.
 - `billing-service` publica um evento de compra mock, necessário fazer uma implementação real.
-- `notification-service` consome esse evento e persiste uma notificação mock, necessário fazer uma implementação real.
+- `notification-service` consome esse evento, envia email de confirmação por SMTP via Gmail/Nodemailer e persiste o status da tentativa.
 - `capture-service` publica um evento de captura mock, necessário fazer uma implementação real.
 - `report-service` consome esse evento e persiste um relatório mock, necessário fazer uma implementação real.
 
@@ -29,7 +29,7 @@ Este repositório não implementa o produto completo. Ele entrega uma fundação
 - recuperação real de senha;
 - integração com Mercado Pago;
 - geração real de Pix;
-- envio real de email;
+- envio real de email com provedor de produção;
 - captura real de tela ou vídeo;
 - geração real de relatório e ZIP;
 - telas completas do produto.
