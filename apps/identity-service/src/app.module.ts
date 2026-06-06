@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { UserEventsPublisher } from './messaging/user-events.publisher';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -16,6 +17,6 @@ import { PrismaModule } from './prisma/prisma.module';
     }),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, UserEventsPublisher],
 })
 export class AppModule {}

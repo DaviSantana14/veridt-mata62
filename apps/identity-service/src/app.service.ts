@@ -18,12 +18,14 @@ import { PrismaService } from './prisma/prisma.service';
 
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user-dto';
+import { UserEventsPublisher } from './messaging/user-events.publisher';
 
 @Injectable()
 export class AppService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly userEventsPublisher: UserEventsPublisher,
   ) {}
 
   getHealth(): HealthResponse {
@@ -60,6 +62,14 @@ export class AppService {
         profile: body.profile,
         oabNumber: body.oabNumber?.trim(),
       },
+    });
+
+    this.userEventsPublisher.publishUserRegistered({
+      userId: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      profile: user.profile,
+      occurredAt: user.createdAt.toISOString(),
     });
 
     return {

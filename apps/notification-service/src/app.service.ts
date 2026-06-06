@@ -3,6 +3,7 @@ import {
   VERIDIT_EVENTS,
   type CreditPurchaseCreatedEvent,
   type HealthResponse,
+  type UserRegisteredEvent,
 } from '@veridit/contracts';
 import { EMAIL_PROVIDER } from './email/email.tokens';
 import type { EmailProvider } from './email/email.types';
@@ -13,6 +14,15 @@ export interface NotificationResponse {
   recipient: string;
   status: string;
   createdAt: string;
+}
+
+interface CreateEmailNotificationInput {
+  recipient: string;
+  subject: string;
+  body: string;
+  html: string;
+  eventName: string;
+  metadata: Record<string, string | number | boolean | null>;
 }
 
 @Injectable()
@@ -36,18 +46,51 @@ export class AppService {
   ): Promise<NotificationResponse> {
     const subject = 'Compra de creditos Veridit confirmada';
     const body = `Compra ${event.purchaseId} confirmou ${event.credits} creditos para o pacote ${event.packageName}.`;
+
+    return this.createEmailNotification({
+      recipient: event.payerEmail,
+      subject,
+      body,
+      html: '<p>Sua compra de creditos Veridit foi confirmada.</p>',
+      eventName: VERIDIT_EVENTS.creditPurchased,
+      metadata: {
+        purchaseId: event.purchaseId,
+        userId: event.userId,
+        packageName: event.packageName,
+      },
+    });
+  }
+
+  async createUserRegisteredEmail(
+    event: UserRegisteredEvent,
+  ): Promise<NotificationResponse> {
+    const subject = 'Bem-vindo ao Veridit';
+    const body = `Ola ${event.fullName}, sua conta Veridit foi criada com sucesso.`;
+
+    return this.createEmailNotification({
+      recipient: event.email,
+      subject,
+      body,
+      html: `<p>Ola ${event.fullName}, sua conta Veridit foi criada com sucesso.</p>`,
+      eventName: VERIDIT_EVENTS.userRegistered,
+      metadata: {
+        userId: event.userId,
+        profile: event.profile,
+      },
+    });
+  }
+
+  private async createEmailNotification(
+    input: CreateEmailNotificationInput,
+  ): Promise<NotificationResponse> {
     const notification = await this.prisma.notification.create({
       data: {
-        recipient: event.payerEmail,
-        subject,
-        body,
-        eventName: VERIDIT_EVENTS.creditPurchased,
+        recipient: input.recipient,
+        subject: input.subject,
+        body: input.body,
+        eventName: input.eventName,
         status: 'PENDING',
-        metadata: {
-          purchaseId: event.purchaseId,
-          userId: event.userId,
-          packageName: event.packageName,
-        },
+        metadata: input.metadata,
       },
     });
 
@@ -55,10 +98,10 @@ export class AppService {
 
     try {
       const result = await this.emailProvider.sendEmail({
-        to: event.payerEmail,
-        subject,
-        text: body,
-        html: '<p>Sua compra de creditos Veridit foi confirmada.</p>',
+        to: input.recipient,
+        subject: input.subject,
+        text: input.body,
+        html: input.html,
       });
 
       providerMessageId = result.messageId;

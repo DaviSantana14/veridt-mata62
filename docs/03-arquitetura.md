@@ -13,7 +13,7 @@ Next.js frontend -> API Gateway -> microsserviços NestJS
 - O frontend nunca chama microsserviços diretamente.
 - O frontend deve chamar apenas o API Gateway.
 - O API Gateway fala com os serviços por HTTP.
-- Eventos assíncronos passam pelo RabbitMQ, por exemplo, compra e notificação.
+- Eventos assíncronos passam pelo RabbitMQ, por exemplo, cadastro, compra e notificação.
 - Cada serviço acessa somente o próprio banco.
 - Nenhum serviço deve importar Prisma Client de outro serviço.
 - Tipos e nomes de eventos compartilhados ficam em `packages/contracts`.

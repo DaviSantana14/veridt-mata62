@@ -13,6 +13,7 @@ export const RMQ_QUEUES = {
 } as const;
 
 export const VERIDIT_EVENTS = {
+  userRegistered: "identity.user_registered",
   creditPurchased: "billing.credit_purchased",
   captureCompleted: "capture.completed",
 } as const;
@@ -63,6 +64,14 @@ export interface AuthResponse {
     email: string;
     profile: "COMMON_USER" | "LAWYER";
   };
+}
+
+export interface UserRegisteredEvent {
+  userId: string;
+  fullName: string;
+  email: string;
+  profile: "COMMON_USER" | "LAWYER";
+  occurredAt: string;
 }
 
 export interface CreditPackageResponse {

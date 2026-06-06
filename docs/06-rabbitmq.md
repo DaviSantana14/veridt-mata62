@@ -11,10 +11,17 @@ As filas ficam declaradas em `packages/contracts/src/index.ts`:
 
 ## Eventos atuais
 
+- `identity.user_registered`
 - `billing.credit_purchased`
 - `capture.completed`
 
-## Fluxos implementados temporariamente para passar no build
+## Fluxos implementados
+
+Cadastro:
+
+```text
+api-gateway -> identity-service -> RabbitMQ -> notification-service
+```
 
 Compra mock:
 
