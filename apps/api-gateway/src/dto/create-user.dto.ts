@@ -15,8 +15,8 @@ export class CreateUserDto implements RegisterUserRequest {
   @IsString()
   password!: string;
 
-  @IsIn(["COMMON_USER", "LAWYER"])
-  profile!: "COMMON_USER" | "LAWYER";
+  @IsIn(['COMMON_USER', 'LAWYER'])
+  profile!: 'COMMON_USER' | 'LAWYER';
 
   @IsOptional()
   @IsString()

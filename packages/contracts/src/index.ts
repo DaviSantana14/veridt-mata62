@@ -40,6 +40,11 @@ export interface RegisterUserRequest {
   oabNumber?: string;
 }
 
+export interface LoginUserRequest {
+  email: string;
+  password: string;
+}
+
 export interface UserResponse {
   id: string;
   fullName: string;
@@ -47,6 +52,17 @@ export interface UserResponse {
   cpf: string;
   profile: "COMMON_USER" | "LAWYER";
   createdAt: string;
+}
+
+export interface AuthResponse {
+  message: string;
+  accessToken: string;
+  user: {
+    id: string;
+    fullName: string;
+    email: string;
+    profile: "COMMON_USER" | "LAWYER";
+  };
 }
 
 export interface CreditPackageResponse {

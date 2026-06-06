@@ -34,9 +34,7 @@ export class AppService {
     };
   }
 
-  async createUser(
-    body: CreateUserDto,
-  ): Promise<UserResponse> {
+  async createUser(body: CreateUserDto): Promise<UserResponse> {
     const existingUser = await this.prisma.user.findFirst({
       where: {
         OR: [{ email: body.email }, { cpf: body.cpf }],
@@ -44,24 +42,14 @@ export class AppService {
     });
 
     if (existingUser) {
-      throw new BadRequestException(
-        'Usuário já cadastrado',
-      );
+      throw new BadRequestException('Usuário já cadastrado');
     }
 
-    if (
-      body.profile === 'LAWYER' &&
-      !body.oabNumber
-    ) {
-      throw new BadRequestException(
-        'Advogado precisa informar OAB',
-      );
+    if (body.profile === 'LAWYER' && !body.oabNumber) {
+      throw new BadRequestException('Advogado precisa informar OAB');
     }
 
-    const passwordHash = await bcrypt.hash(
-      body.password,
-      10,
-    );
+    const passwordHash = await bcrypt.hash(body.password, 10);
 
     const user = await this.prisma.user.create({
       data: {
@@ -84,9 +72,7 @@ export class AppService {
     };
   }
 
-  async login(
-    body: LoginUserDto,
-  ): Promise<AuthResponse & { accessToken: string }> {
+  async login(body: LoginUserDto): Promise<AuthResponse> {
     const user = await this.prisma.user.findUnique({
       where: {
         email: body.email.toLowerCase().trim(),
@@ -94,9 +80,7 @@ export class AppService {
     });
 
     if (!user || !user.passwordHash) {
-      throw new UnauthorizedException(
-        'Email ou senha inválidos',
-      );
+      throw new UnauthorizedException('Email ou senha inválidos');
     }
 
     const passwordMatch = await bcrypt.compare(
@@ -105,9 +89,7 @@ export class AppService {
     );
 
     if (!passwordMatch) {
-      throw new UnauthorizedException(
-        'Email ou senha inválidos',
-      );
+      throw new UnauthorizedException('Email ou senha inválidos');
     }
 
     const payload = {
@@ -116,8 +98,7 @@ export class AppService {
       profile: user.profile,
     };
 
-    const accessToken =
-      await this.jwtService.signAsync(payload);
+    const accessToken = await this.jwtService.signAsync(payload);
 
     return {
       message: 'Login realizado com sucesso',
@@ -131,4 +112,3 @@ export class AppService {
     };
   }
 }
-

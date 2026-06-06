@@ -49,7 +49,6 @@ export const currentUser = {
   initials: "AS",
   email: "ana.silva@email.com",
   cpf: "123.456.789-00",
-  phone: "(11) 98765-4321",
   credits: 12,
   lastPasswordChange: "15/04/2024",
 };
