@@ -17,6 +17,8 @@ const authForms = readProjectFile('src/components/veridit/auth-forms.tsx');
 const authSession = readProjectFile('src/lib/auth-session.ts');
 const appShell = readProjectFile('src/components/layout/app-shell.tsx');
 const logoutButton = readProjectFile('src/components/veridit/logout-button.tsx');
+const mockData = readProjectFile('src/lib/mock-data.ts');
+const profilePage = readProjectFile('src/app/perfil/page.tsx');
 
 assert.match(
   gateway,
@@ -73,4 +75,9 @@ assert.match(
   appShell,
   /<AuthBoundary>/,
   'AppShell must protect internal pages with AuthBoundary',
+);
+assert.doesNotMatch(
+  `${gateway}\n${authForms}\n${mockData}\n${profilePage}`,
+  /\bphone\b|Phone|Telefone|telefone/,
+  'registration and profile UI must not use phone fields',
 );

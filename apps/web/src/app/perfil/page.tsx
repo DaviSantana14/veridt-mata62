@@ -3,7 +3,6 @@ import {
   KeyRound,
   Mail,
   Pencil,
-  Phone,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -127,7 +126,6 @@ export default function ProfilePage() {
                 <ReadOnlyField label="Nome Completo" value={currentUser.name} icon={UserRound} />
                 <ReadOnlyField label="CPF" value={currentUser.cpf} />
                 <ReadOnlyField label="E-mail" value={currentUser.email} icon={Mail} />
-                <ReadOnlyField label="Telefone" value={currentUser.phone} icon={Phone} />
               </CardContent>
             </Card>
 

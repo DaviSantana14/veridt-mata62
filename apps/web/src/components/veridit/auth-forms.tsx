@@ -150,7 +150,6 @@ export function RegisterForm() {
     const firstName = String(form.get("firstName"));
     const lastName = String(form.get("lastName"));
     const cpf = String(form.get("cpf")).replace(/\D/g, "");
-    const phone = String(form.get("phone"));
     const email = String(form.get("email"));
     const password = String(form.get("password"));
     const oabNumber = String(form.get("oab") ?? "");
@@ -158,7 +157,6 @@ export function RegisterForm() {
     const result = await registerUser({
       fullName: `${firstName} ${lastName}`.trim(),
       cpf,
-      phone,
       email,
       password,
       profile,
@@ -216,17 +214,10 @@ export function RegisterForm() {
               </Field>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="cpf">CPF</FieldLabel>
-                <Input id="cpf" name="cpf" required />
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="phone">Telefone</FieldLabel>
-                <Input id="phone" name="phone" type="tel" required />
-              </Field>
-            </div>
+            <Field>
+              <FieldLabel htmlFor="cpf">CPF</FieldLabel>
+              <Input id="cpf" name="cpf" required />
+            </Field>
 
             {profile === "LAWYER" && (
               <Field>

@@ -92,7 +92,6 @@ export function loginUser(payload: {
 export function registerUser(payload: {
   fullName: string;
   cpf: string;
-  phone: string;
   email: string;
   password: string;
   profile: string;

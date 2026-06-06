@@ -2,7 +2,6 @@ import {
   IsEmail,
   IsIn,
   IsNotEmpty,
-  IsOptional,
   IsString,
   Matches,
   MinLength,
@@ -26,10 +25,6 @@ export class CreateUserDto {
     message: 'Email é obrigatório',
   })
   email!: string;
-
-  @IsOptional()
-  @IsString()
-  phone?: string;
 
   @IsString()
   @IsNotEmpty({
