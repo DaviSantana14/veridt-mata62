@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { saveAuthSession } from "@/lib/auth-session";
 import { loginUser, registerUser } from "@/lib/gateway";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -68,6 +69,7 @@ export function LoginForm() {
         return;
       }
 
+      saveAuthSession(result.data);
       toast.success("Login realizado com sucesso.");
       router.push("/dashboard");
     } catch {
@@ -170,8 +172,8 @@ export function RegisterForm() {
       return;
     }
 
-    toast.success("Conta criada com sucesso.");
-    router.push("/dashboard");
+    toast.success("Conta criada com sucesso. Faça login para continuar.");
+    router.push("/login");
   }
 
   return (

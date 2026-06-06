@@ -1,8 +1,6 @@
-import Link from "next/link";
 import {
   CreditCard,
   KeyRound,
-  LogOut,
   Mail,
   Pencil,
   Phone,
@@ -24,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { LogoutButton } from "@/components/veridit/logout-button";
 import { SectionHeader } from "@/components/veridit/section-header";
 import { currentUser } from "@/lib/mock-data";
 
@@ -179,12 +178,9 @@ export default function ProfilePage() {
 
         <div className="flex flex-col gap-6">
           <Separator />
-          <Button asChild variant="destructive" className="w-fit">
-            <Link href="/login">
-              <LogOut data-icon="inline-start" aria-hidden="true" />
-              Sair do Sistema
-            </Link>
-          </Button>
+          <LogoutButton variant="destructive" className="w-fit">
+            Sair do Sistema
+          </LogoutButton>
         </div>
       </div>
     </AppShell>

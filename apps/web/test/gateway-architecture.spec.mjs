@@ -1,14 +1,22 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const gateway = readFileSync(join(root, 'src/lib/gateway.ts'), 'utf8');
-const authForms = readFileSync(
-  join(root, 'src/components/veridit/auth-forms.tsx'),
-  'utf8',
-);
+
+function readProjectFile(relativePath) {
+  const filePath = join(root, relativePath);
+  assert.ok(existsSync(filePath), `${relativePath} must exist`);
+
+  return readFileSync(filePath, 'utf8');
+}
+
+const gateway = readProjectFile('src/lib/gateway.ts');
+const authForms = readProjectFile('src/components/veridit/auth-forms.tsx');
+const authSession = readProjectFile('src/lib/auth-session.ts');
+const appShell = readProjectFile('src/components/layout/app-shell.tsx');
+const logoutButton = readProjectFile('src/components/veridit/logout-button.tsx');
 
 assert.match(
   gateway,
@@ -35,4 +43,34 @@ assert.doesNotMatch(
   authForms,
   /fetch\(/,
   'auth forms must use gateway helpers instead of direct fetch calls',
+);
+assert.match(
+  authSession,
+  /veridit\.auth\.session/,
+  'auth session helper must use the agreed localStorage key',
+);
+assert.match(
+  authSession,
+  /typeof window/,
+  'auth session helper must be safe when rendered on the server',
+);
+assert.match(
+  authForms,
+  /saveAuthSession\(result\.data\)/,
+  'login form must persist the AuthResponse session after successful login',
+);
+assert.match(
+  logoutButton,
+  /clearAuthSession\(\)/,
+  'logout button must clear the stored auth session',
+);
+assert.match(
+  logoutButton,
+  /router\.replace\(["']\/login["']\)/,
+  'logout button must redirect to login without leaving a protected history entry',
+);
+assert.match(
+  appShell,
+  /<AuthBoundary>/,
+  'AppShell must protect internal pages with AuthBoundary',
 );

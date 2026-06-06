@@ -33,6 +33,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { VeriditLogo } from "@/components/layout/veridit-logo";
+import { AuthBoundary } from "@/components/veridit/auth-boundary";
+import { LogoutButton } from "@/components/veridit/logout-button";
 import { currentUser } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -221,54 +223,64 @@ export function ProductShell({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-dvh bg-background text-foreground">
-      <div className="flex min-h-dvh">
-        <SidebarNav active={active} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 border-b bg-background/[0.82] backdrop-blur-xl">
-            <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center justify-between gap-3 px-4 lg:px-8">
-              <div className="flex min-w-0 items-center gap-3">
-                <MobileNav active={active} />
-                <div className="xl:hidden">
-                  <VeriditLogo className="min-h-10 text-lg" />
+    <AuthBoundary>
+      <div className="min-h-dvh bg-background text-foreground">
+        <div className="flex min-h-dvh">
+          <SidebarNav active={active} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <header className="sticky top-0 z-30 border-b bg-background/[0.82] backdrop-blur-xl">
+              <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center justify-between gap-3 px-4 lg:px-8">
+                <div className="flex min-w-0 items-center gap-3">
+                  <MobileNav active={active} />
+                  <div className="xl:hidden">
+                    <VeriditLogo className="min-h-10 text-lg" />
+                  </div>
+                  <Badge variant="secondary" className="hidden rounded-full md:inline-flex">
+                    <BookOpenCheck aria-hidden="true" />
+                    {activeLabels[active]}
+                  </Badge>
                 </div>
-                <Badge variant="secondary" className="hidden rounded-full md:inline-flex">
-                  <BookOpenCheck aria-hidden="true" />
-                  {activeLabels[active]}
-                </Badge>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <div className="hidden min-h-10 items-center gap-2 rounded-full border bg-card/80 px-3 text-sm text-muted-foreground lg:flex">
-                  <Search aria-hidden="true" />
-                  Cofre de evidências Veridit
+                <div className="flex items-center gap-2">
+                  <div className="hidden min-h-10 items-center gap-2 rounded-full border bg-card/80 px-3 text-sm text-muted-foreground lg:flex">
+                    <Search aria-hidden="true" />
+                    Cofre de evidências Veridit
+                  </div>
+                  <Badge className="hidden rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)] sm:inline-flex">
+                    <ShieldCheck aria-hidden="true" />
+                    {currentUser.credits} créditos
+                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="outline" size="icon" aria-label="Notificações">
+                        <Bell aria-hidden="true" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Notificações</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <LogoutButton variant="outline" size="icon" aria-label="Sair">
+                        <span className="sr-only">Sair</span>
+                      </LogoutButton>
+                    </TooltipTrigger>
+                    <TooltipContent>Sair</TooltipContent>
+                  </Tooltip>
+                  <Avatar className="size-9 border border-primary/20">
+                    <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
+                      {currentUser.initials}
+                    </AvatarFallback>
+                  </Avatar>
                 </div>
-                <Badge className="hidden rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)] sm:inline-flex">
-                  <ShieldCheck aria-hidden="true" />
-                  {currentUser.credits} créditos
-                </Badge>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label="Notificações">
-                      <Bell aria-hidden="true" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Notificações</TooltipContent>
-                </Tooltip>
-                <Avatar className="size-9 border border-primary/20">
-                  <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
-                    {currentUser.initials}
-                  </AvatarFallback>
-                </Avatar>
               </div>
-            </div>
-          </header>
-          <main className="mx-auto w-full max-w-[1440px] px-4 py-6 lg:px-8 lg:py-8">
-            {children}
-          </main>
+            </header>
+            <main className="mx-auto w-full max-w-[1440px] px-4 py-6 lg:px-8 lg:py-8">
+              {children}
+            </main>
+          </div>
         </div>
       </div>
-    </div>
+    </AuthBoundary>
   );
 }
 
