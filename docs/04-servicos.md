@@ -31,7 +31,7 @@ Responsável por registros de conteúdo e assets capturados. Hoje cria uma captu
 
 ## `apps/notification-service`
 
-Responsável por notificações. Hoje consome `billing.credit_purchased` e persiste uma notificação de email mock.
+Responsável por notificações. Consome `billing.credit_purchased`, envia email de confirmação por SMTP via Gmail/Nodemailer e persiste o status da tentativa (`PENDING`, `SENT` ou `FAILED`).
 
 ## `apps/report-service`
 
