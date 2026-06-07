@@ -28,22 +28,23 @@ export class AppService {
       body,
     );
   }
+  
   private readonly urls = {
     identity:
       process.env.IDENTITY_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.identity}`,
+      `http://127.0.0.1:${SERVICE_PORTS.identity}`,
     billing:
       process.env.BILLING_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.billing}`,
+      `http://127.0.0.1:${SERVICE_PORTS.billing}`,
     capture:
       process.env.CAPTURE_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.capture}`,
+      `http://127.0.0.1:${SERVICE_PORTS.capture}`,
     notification:
       process.env.NOTIFICATION_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.notification}`,
+      `http://127.0.0.1:${SERVICE_PORTS.notification}`,
     report:
       process.env.REPORT_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.report}`,
+      `http://127.0.0.1:${SERVICE_PORTS.report}`,
   };
 
   getHealth(): GatewayHealthResponse {
@@ -77,6 +78,25 @@ export class AppService {
       'identity-service',
       this.urls.identity,
       '/auth/login',
+      body,
+    );
+  }
+
+  // --- MÉTODOS DE RECUPERAÇÃO DE SENHA ---
+  forgotPassword(body: any): Promise<{ message: string }> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/auth/forgot-password', // Repassa para a rota exata do identity
+      body,
+    );
+  }
+
+  resetPassword(body: any): Promise<{ message: string }> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/auth/reset-password', // Repassa para a rota exata do identity
       body,
     );
   }

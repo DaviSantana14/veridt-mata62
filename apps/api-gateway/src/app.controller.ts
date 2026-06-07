@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, HttpCode, HttpStatus } from '@nestjs/common';
-import { LoginDto } from './dto/login.dto'; // Adicione esta linha
+import { LoginDto } from './dto/login.dto'; 
 import type {
   AuthResponse,
   ContentRecordResponse,
@@ -14,6 +14,10 @@ import { MockCaptureDto } from './dto/mock-capture.dto';
 import { MockPurchaseDto } from './dto/mock-purchase.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
+
+// Importe os DTOs que você copiou
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Controller()
 export class AppController {
@@ -43,6 +47,19 @@ export class AppController {
   @Post('identity/auth/login')
   loginUser(@Body() body: LoginUserDto): Promise<AuthResponse> {
     return this.appService.loginUser(body);
+  }
+
+  // --- NOVAS ROTAS EXPOSTAS NO GATEWAY ---
+  @Post('identity/auth/forgot-password')
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(@Body() body: ForgotPasswordDto) {
+    return this.appService.forgotPassword(body);
+  }
+
+  @Post('identity/auth/reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(@Body() body: ResetPasswordDto) {
+    return this.appService.resetPassword(body);
   }
 
   @Get('billing/health')
