@@ -14,6 +14,7 @@ export const RMQ_QUEUES = {
 
 export const VERIDIT_EVENTS = {
   userRegistered: "identity.user_registered",
+  passwordResetRequested: "identity.password_reset_requested",
   creditPurchased: "billing.credit_purchased",
   captureCompleted: "capture.completed",
 } as const;
@@ -71,6 +72,15 @@ export interface UserRegisteredEvent {
   fullName: string;
   email: string;
   profile: "COMMON_USER" | "LAWYER";
+  occurredAt: string;
+}
+
+export interface PasswordResetRequestedEvent {
+  userId: string;
+  fullName: string;
+  email: string;
+  code: string;
+  expiresAt: string;
   occurredAt: string;
 }
 

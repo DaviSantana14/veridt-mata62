@@ -147,10 +147,14 @@ export class AppService {
       },
     });
 
-    // TODO: Integrar com o UserEventsPublisher/NotificationService para enviar o email real
-    console.log(
-      `[SIMULAÇÃO DE E-MAIL] Código de recuperação para ${email}: ${otpCode}`,
-    );
+    this.userEventsPublisher.publishPasswordResetRequested({
+      userId: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      code: otpCode,
+      expiresAt: expiresAt.toISOString(),
+      occurredAt: new Date().toISOString(),
+    });
 
     return {
       message: 'Se o e-mail estiver cadastrado, um código será enviado.',

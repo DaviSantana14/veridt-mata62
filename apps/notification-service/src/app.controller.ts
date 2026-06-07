@@ -4,6 +4,7 @@ import {
   VERIDIT_EVENTS,
   type CreditPurchaseCreatedEvent,
   type HealthResponse,
+  type PasswordResetRequestedEvent,
   type UserRegisteredEvent,
 } from '@veridit/contracts';
 import { AppService } from './app.service';
@@ -30,5 +31,12 @@ export class AppController {
     @Payload() event: UserRegisteredEvent,
   ): Promise<NotificationResponse> {
     return this.appService.createUserRegisteredEmail(event);
+  }
+
+  @EventPattern(VERIDIT_EVENTS.passwordResetRequested)
+  handlePasswordResetRequested(
+    @Payload() event: PasswordResetRequestedEvent,
+  ): Promise<NotificationResponse> {
+    return this.appService.createPasswordResetEmail(event);
   }
 }

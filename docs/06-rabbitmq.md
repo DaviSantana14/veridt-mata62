@@ -12,12 +12,19 @@ As filas ficam declaradas em `packages/contracts/src/index.ts`:
 ## Eventos atuais
 
 - `identity.user_registered`
+- `identity.password_reset_requested`
 - `billing.credit_purchased`
 - `capture.completed`
 
 ## Fluxos implementados
 
 Cadastro:
+
+```text
+api-gateway -> identity-service -> RabbitMQ -> notification-service
+```
+
+Recuperação de senha:
 
 ```text
 api-gateway -> identity-service -> RabbitMQ -> notification-service

@@ -22,6 +22,17 @@ function makeUserRegisteredEvent() {
   };
 }
 
+function makePasswordResetEvent() {
+  return {
+    userId: 'user-1',
+    fullName: 'Ana Silva',
+    email: 'ana@example.com',
+    code: '123456',
+    expiresAt: '2026-06-06T12:15:00.000Z',
+    occurredAt: '2026-06-06T12:00:00.000Z',
+  };
+}
+
 function makeNotification(status, recipient = 'buyer@example.com') {
   return {
     id: 'notification-1',
@@ -31,12 +42,16 @@ function makeNotification(status, recipient = 'buyer@example.com') {
   };
 }
 
-function makePrisma(updates, onUpdate) {
+function makePrisma(updates, onUpdate, creates) {
   let createdRecipient = 'buyer@example.com';
 
   return {
     notification: {
       create(input) {
+        if (creates) {
+          creates.push(input);
+        }
+
         assert.equal(input.data.status, 'PENDING');
         createdRecipient = input.data.recipient;
         return Promise.resolve(makeNotification('PENDING', createdRecipient));
@@ -48,7 +63,9 @@ function makePrisma(updates, onUpdate) {
           return onUpdate(input);
         }
 
-        return Promise.resolve(makeNotification(input.data.status, createdRecipient));
+        return Promise.resolve(
+          makeNotification(input.data.status, createdRecipient),
+        );
       },
     },
   };
@@ -141,6 +158,68 @@ async function sendsWelcomeEmailForRegisteredUser() {
   assert.match(sentEmails[0]?.subject, /Bem-vindo/);
 }
 
+async function sendsPasswordResetEmailWithCode() {
+  const updates = [];
+  const creates = [];
+  const sentEmails = [];
+  const emailProvider = {
+    sendEmail(input) {
+      sentEmails.push(input);
+      return Promise.resolve({ messageId: 'password-reset-message-123' });
+    },
+  };
+  const service = new AppService(
+    makePrisma(updates, undefined, creates),
+    emailProvider,
+  );
+
+  const response = await service.createPasswordResetEmail(
+    makePasswordResetEvent(),
+  );
+
+  assert.equal(response.recipient, 'ana@example.com');
+  assert.equal(response.status, 'SENT');
+  assert.equal(creates.length, 1);
+  assert.equal(creates[0]?.data.eventName, 'identity.password_reset_requested');
+  assert.equal(creates[0]?.data.metadata.userId, 'user-1');
+  assert.equal(creates[0]?.data.metadata.expiresAt, '2026-06-06T12:15:00.000Z');
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.data.status, 'SENT');
+  assert.equal(
+    updates[0]?.data.providerMessageId,
+    'password-reset-message-123',
+  );
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0]?.to, 'ana@example.com');
+  assert.match(sentEmails[0]?.subject, /recuperação de senha/i);
+  assert.match(sentEmails[0]?.text, /123456/);
+  assert.match(sentEmails[0]?.text, /15 minutos/);
+  assert.match(sentEmails[0]?.html, /123456/);
+}
+
+async function marksPasswordResetSendFailureAsFailed() {
+  const updates = [];
+  const emailProvider = {
+    sendEmail() {
+      return Promise.reject(new Error('smtp rejected password reset email'));
+    },
+  };
+  const service = new AppService(makePrisma(updates), emailProvider);
+
+  const response = await service.createPasswordResetEmail(
+    makePasswordResetEvent(),
+  );
+
+  assert.equal(response.status, 'FAILED');
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.data.status, 'FAILED');
+  assert.equal(
+    updates[0]?.data.errorMessage,
+    'smtp rejected password reset email',
+  );
+  assert.ok(updates[0]?.data.failedAt instanceof Date);
+}
+
 async function marksWelcomeSendFailureAsFailed() {
   const updates = [];
   const emailProvider = {
@@ -192,6 +271,8 @@ async function main() {
   await marksSendFailureAsFailed();
   await doesNotMarkSentEmailAsFailedWhenSentUpdateFails();
   await sendsWelcomeEmailForRegisteredUser();
+  await sendsPasswordResetEmailWithCode();
+  await marksPasswordResetSendFailureAsFailed();
   await marksWelcomeSendFailureAsFailed();
   await doesNotMarkWelcomeEmailAsFailedWhenSentUpdateFails();
 }
