@@ -105,7 +105,15 @@ export function LoginForm() {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="password">Senha</FieldLabel>
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="password">Senha</FieldLabel>
+                <Link 
+                  href="/recuperar-senha" 
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Esqueci minha senha
+                </Link>
+              </div>
               <Input
                 id="password"
                 name="password"
@@ -261,55 +269,158 @@ export function RegisterForm() {
 }
 
 export function RecoverPasswordForm() {
+  const router = useRouter();
   const [pending, setPending] = useState(false);
+  
+  const [step, setStep] = useState<1 | 2>(1);
+  const [savedEmail, setSavedEmail] = useState("");
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleRequestCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
 
-    window.setTimeout(() => {
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get("email"));
+
+    try {
+      const response = await fetch("http://127.0.0.1:3001/identity/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(errorData.message?.[0] || errorData.message || "Erro ao solicitar código.");
+        return;
+      }
+
+      setSavedEmail(email);
+      setStep(2);
+      toast.success("Se o e-mail estiver cadastrado, o código foi enviado.");
+    } catch {
+      toast.error("Erro de conexão com o servidor.");
+    } finally {
       setPending(false);
-      toast.success("Instruções enviadas para seu e-mail.");
-    }, 350);
+    }
+  }
+
+  async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+
+    const form = new FormData(event.currentTarget);
+    const code = String(form.get("code"));
+    const newPassword = String(form.get("newPassword"));
+
+    try {
+      const response = await fetch("http://127.0.0.1:3001/identity/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: savedEmail, code, newPassword }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errMsg = Array.isArray(errorData.message) ? errorData.message[0] : errorData.message;
+        toast.error(errMsg || "Erro ao redefinir a senha.");
+        return;
+      }
+
+      // Sucesso absoluto!
+      toast.success("Senha redefinida com sucesso! Faça login.");
+      router.push("/login");
+    } catch {
+      toast.error("Erro de conexão com o servidor.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
     <Card className="premium-card w-full rounded-2xl">
       <CardHeader>
-        <CardTitle className="text-2xl">Recuperar Senha</CardTitle>
+        <CardTitle className="text-2xl">
+          {step === 1 ? "Recuperar Senha" : "Redefinir Senha"}
+        </CardTitle>
         <CardDescription>
-          Informe seu e-mail para recuperação.
+          {step === 1
+            ? "Informe seu e-mail para receber as instruções."
+            : `Digite o código enviado para ${savedEmail} e sua nova senha.`}
         </CardDescription>
       </CardHeader>
 
       <CardContent className="grid gap-5">
-        <form onSubmit={onSubmit}>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="recover-email">E-mail</FieldLabel>
-              <Input
-                id="recover-email"
-                name="email"
-                type="email"
-                required
-              />
-            </Field>
+        {step === 1 ? (
+          <form onSubmit={handleRequestCode}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="recover-email">E-mail</FieldLabel>
+                <Input
+                  id="recover-email"
+                  name="email"
+                  type="email"
+                  required
+                />
+              </Field>
 
-            <Button type="submit" disabled={pending} className="w-full">
-              <SubmitIcon pending={pending} />
-              Enviar Instruções
-              {!pending ? (
-                <ArrowRight data-icon="inline-end" aria-hidden="true" />
-              ) : null}
-            </Button>
+              <Button type="submit" disabled={pending} className="w-full">
+                <SubmitIcon pending={pending} />
+                Enviar Instruções
+                {!pending ? (
+                  <ArrowRight data-icon="inline-end" aria-hidden="true" />
+                ) : null}
+              </Button>
 
-            <FieldDescription className="text-center">
-              <Link className="font-medium text-primary" href="/login">
-                Voltar para o login
-              </Link>
-            </FieldDescription>
-          </FieldGroup>
-        </form>
+              <FieldDescription className="text-center">
+                <Link className="font-medium text-primary" href="/login">
+                  Voltar para o login
+                </Link>
+              </FieldDescription>
+            </FieldGroup>
+          </form>
+        ) : (
+          <form onSubmit={handleResetPassword}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="code">Código de Verificação</FieldLabel>
+                <Input
+                  id="code"
+                  name="code"
+                  type="text"
+                  maxLength={6}
+                  placeholder="Ex: 123456"
+                  required
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="newPassword">Nova Senha</FieldLabel>
+                <Input
+                  id="newPassword"
+                  name="newPassword"
+                  type="password"
+                  required
+                />
+              </Field>
+
+              <Button type="submit" disabled={pending} className="w-full">
+                <SubmitIcon pending={pending} />
+                Confirmar Nova Senha
+              </Button>
+
+              <FieldDescription className="text-center">
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Voltar e tentar outro e-mail
+                </button>
+              </FieldDescription>
+            </FieldGroup>
+          </form>
+        )}
       </CardContent>
     </Card>
   );
