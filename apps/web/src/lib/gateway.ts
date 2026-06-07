@@ -39,9 +39,7 @@ async function requestGateway<T>(
     return {
       ok: false,
       message:
-        error instanceof Error
-          ? error.message
-          : "Erro de conexão com gateway",
+        error instanceof Error ? error.message : "Erro de conexão com gateway",
     };
   }
 }
@@ -70,10 +68,7 @@ export function createMockPurchase(payload: {
   );
 }
 
-export function loginUser(payload: {
-  email: string;
-  password: string;
-}) {
+export function loginUser(payload: { email: string; password: string }) {
   return requestGateway<{
     accessToken: string;
     user: {
@@ -97,6 +92,24 @@ export function registerUser(payload: {
   oabNumber?: string;
 }) {
   return requestGateway<{ id: string }>("/identity/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function requestPasswordReset(payload: { email: string }) {
+  return requestGateway<{ message: string }>("/identity/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resetPassword(payload: {
+  email: string;
+  code: string;
+  newPassword: string;
+}) {
+  return requestGateway<{ message: string }>("/identity/auth/reset-password", {
     method: "POST",
     body: JSON.stringify(payload),
   });

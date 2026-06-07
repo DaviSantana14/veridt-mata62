@@ -7,6 +7,7 @@ import {
 import {
   RMQ_QUEUES,
   VERIDIT_EVENTS,
+  type PasswordResetRequestedEvent,
   type UserRegisteredEvent,
 } from '@veridit/contracts';
 
@@ -24,23 +25,39 @@ export class UserEventsPublisher implements OnModuleDestroy {
   });
 
   publishUserRegistered(event: UserRegisteredEvent): void {
-    try {
-      this.client.emit(VERIDIT_EVENTS.userRegistered, event).subscribe({
-        error: (error: unknown) => {
-          this.logPublishError(error);
-        },
-      });
-    } catch (error) {
-      this.logPublishError(error);
-    }
+    this.publishEvent(
+      VERIDIT_EVENTS.userRegistered,
+      event,
+      'user registered event',
+    );
+  }
+
+  publishPasswordResetRequested(event: PasswordResetRequestedEvent): void {
+    this.publishEvent(
+      VERIDIT_EVENTS.passwordResetRequested,
+      event,
+      'password reset requested event',
+    );
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.client.close();
   }
 
-  private logPublishError(error: unknown): void {
+  private publishEvent<T>(pattern: string, event: T, label: string): void {
+    try {
+      this.client.emit(pattern, event).subscribe({
+        error: (error: unknown) => {
+          this.logPublishError(label, error);
+        },
+      });
+    } catch (error) {
+      this.logPublishError(label, error);
+    }
+  }
+
+  private logPublishError(label: string, error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to publish user registered event: ${message}`);
+    console.error(`Failed to publish ${label}: ${message}`);
   }
 }

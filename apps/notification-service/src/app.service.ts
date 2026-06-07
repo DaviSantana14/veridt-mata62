@@ -3,6 +3,7 @@ import {
   VERIDIT_EVENTS,
   type CreditPurchaseCreatedEvent,
   type HealthResponse,
+  type PasswordResetRequestedEvent,
   type UserRegisteredEvent,
 } from '@veridit/contracts';
 import { EMAIL_PROVIDER } from './email/email.tokens';
@@ -76,6 +77,25 @@ export class AppService {
       metadata: {
         userId: event.userId,
         profile: event.profile,
+      },
+    });
+  }
+
+  async createPasswordResetEmail(
+    event: PasswordResetRequestedEvent,
+  ): Promise<NotificationResponse> {
+    const subject = 'Código de recuperação de senha Veridit';
+    const body = `Olá ${event.fullName}, seu código de recuperação é ${event.code}. Ele expira em 15 minutos.`;
+
+    return this.createEmailNotification({
+      recipient: event.email,
+      subject,
+      body,
+      html: `<p>Olá ${event.fullName},</p><p>Seu código de recuperação de senha Veridit é <strong>${event.code}</strong>.</p><p>Ele expira em 15 minutos.</p>`,
+      eventName: VERIDIT_EVENTS.passwordResetRequested,
+      metadata: {
+        userId: event.userId,
+        expiresAt: event.expiresAt,
       },
     });
   }

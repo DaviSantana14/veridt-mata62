@@ -12,6 +12,9 @@ import {
   type StartCaptureRequest,
   type UserResponse,
 } from '@veridit/contracts';
+import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 export interface GatewayHealthResponse extends HealthResponse {
   downstream: Record<string, string>;
@@ -19,22 +22,31 @@ export interface GatewayHealthResponse extends HealthResponse {
 
 @Injectable()
 export class AppService {
+  login(body: LoginDto): Promise<{ mensagem: string; accessToken: string }> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/login',
+      body,
+    );
+  }
+
   private readonly urls = {
     identity:
       process.env.IDENTITY_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.identity}`,
+      `http://127.0.0.1:${SERVICE_PORTS.identity}`,
     billing:
       process.env.BILLING_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.billing}`,
+      `http://127.0.0.1:${SERVICE_PORTS.billing}`,
     capture:
       process.env.CAPTURE_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.capture}`,
+      `http://127.0.0.1:${SERVICE_PORTS.capture}`,
     notification:
       process.env.NOTIFICATION_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.notification}`,
+      `http://127.0.0.1:${SERVICE_PORTS.notification}`,
     report:
       process.env.REPORT_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.report}`,
+      `http://127.0.0.1:${SERVICE_PORTS.report}`,
   };
 
   getHealth(): GatewayHealthResponse {
@@ -68,6 +80,25 @@ export class AppService {
       'identity-service',
       this.urls.identity,
       '/auth/login',
+      body,
+    );
+  }
+
+  // --- MÉTODOS DE RECUPERAÇÃO DE SENHA ---
+  forgotPassword(body: ForgotPasswordDto): Promise<{ message: string }> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/auth/forgot-password', // Repassa para a rota exata do identity
+      body,
+    );
+  }
+
+  resetPassword(body: ResetPasswordDto): Promise<{ message: string }> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/auth/reset-password', // Repassa para a rota exata do identity
       body,
     );
   }

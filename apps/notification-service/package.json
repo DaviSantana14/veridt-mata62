@@ -46,7 +46,7 @@
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^17.0.0",
     "prettier": "^3.4.2",
-    "prisma": "latest",
+    "prisma": "^6.19.3",
     "source-map-support": "^0.5.21",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
