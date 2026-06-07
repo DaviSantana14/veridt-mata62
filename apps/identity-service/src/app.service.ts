@@ -1,12 +1,11 @@
 import {
   BadRequestException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import * as crypto from 'crypto'; 
+import * as crypto from 'crypto';
 
 import type {
   AuthResponse,
@@ -129,7 +128,9 @@ export class AppService {
     });
 
     if (!user) {
-      return { message: 'Se o e-mail estiver cadastrado, um código será enviado.' };
+      return {
+        message: 'Se o e-mail estiver cadastrado, um código será enviado.',
+      };
     }
 
     const otpCode = crypto.randomInt(100000, 999999).toString();
@@ -147,7 +148,9 @@ export class AppService {
     });
 
     // TODO: Integrar com o UserEventsPublisher/NotificationService para enviar o email real
-    console.log(`[SIMULAÇÃO DE E-MAIL] Código de recuperação para ${email}: ${otpCode}`);
+    console.log(
+      `[SIMULAÇÃO DE E-MAIL] Código de recuperação para ${email}: ${otpCode}`,
+    );
 
     return {
       message: 'Se o e-mail estiver cadastrado, um código será enviado.',
@@ -156,7 +159,7 @@ export class AppService {
 
   async resetPassword(body: ResetPasswordDto) {
     const email = body.email.toLowerCase().trim();
-    
+
     const user = await this.prisma.user.findUnique({
       where: { email },
     });

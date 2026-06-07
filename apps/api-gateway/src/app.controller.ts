@@ -1,5 +1,12 @@
-import { Body, Controller, Get, Post, HttpCode, HttpStatus } from '@nestjs/common';
-import { LoginDto } from './dto/login.dto'; 
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { LoginDto } from './dto/login.dto';
 import type {
   AuthResponse,
   ContentRecordResponse,

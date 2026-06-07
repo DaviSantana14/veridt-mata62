@@ -13,6 +13,8 @@ import {
   type UserResponse,
 } from '@veridit/contracts';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 export interface GatewayHealthResponse extends HealthResponse {
   downstream: Record<string, string>;
@@ -28,7 +30,7 @@ export class AppService {
       body,
     );
   }
-  
+
   private readonly urls = {
     identity:
       process.env.IDENTITY_SERVICE_URL ??
@@ -83,7 +85,7 @@ export class AppService {
   }
 
   // --- MÉTODOS DE RECUPERAÇÃO DE SENHA ---
-  forgotPassword(body: any): Promise<{ message: string }> {
+  forgotPassword(body: ForgotPasswordDto): Promise<{ message: string }> {
     return this.postToService(
       'identity-service',
       this.urls.identity,
@@ -92,7 +94,7 @@ export class AppService {
     );
   }
 
-  resetPassword(body: any): Promise<{ message: string }> {
+  resetPassword(body: ResetPasswordDto): Promise<{ message: string }> {
     return this.postToService(
       'identity-service',
       this.urls.identity,

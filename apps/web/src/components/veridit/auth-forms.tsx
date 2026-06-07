@@ -6,7 +6,12 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { saveAuthSession } from "@/lib/auth-session";
-import { loginUser, registerUser } from "@/lib/gateway";
+import {
+  loginUser,
+  registerUser,
+  requestPasswordReset,
+  resetPassword,
+} from "@/lib/gateway";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -45,7 +50,6 @@ function AuthNotice() {
       </AlertDescription>
     </Alert>
   );
-
 }
 
 export function LoginForm() {
@@ -107,8 +111,8 @@ export function LoginForm() {
             <Field>
               <div className="flex items-center justify-between">
                 <FieldLabel htmlFor="password">Senha</FieldLabel>
-                <Link 
-                  href="/recuperar-senha" 
+                <Link
+                  href="/recuperar-senha"
                   className="text-sm font-medium text-primary hover:underline"
                 >
                   Esqueci minha senha
@@ -139,7 +143,6 @@ export function LoginForm() {
       </CardContent>
     </Card>
   );
-
 }
 
 export function RegisterForm() {
@@ -271,7 +274,7 @@ export function RegisterForm() {
 export function RecoverPasswordForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  
+
   const [step, setStep] = useState<1 | 2>(1);
   const [savedEmail, setSavedEmail] = useState("");
 
@@ -283,15 +286,10 @@ export function RecoverPasswordForm() {
     const email = String(form.get("email"));
 
     try {
-      const response = await fetch("http://127.0.0.1:3001/identity/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
+      const result = await requestPasswordReset({ email });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        toast.error(errorData.message?.[0] || errorData.message || "Erro ao solicitar código.");
+      if (!result.ok) {
+        toast.error(result.message || "Erro ao solicitar código.");
         return;
       }
 
@@ -314,20 +312,17 @@ export function RecoverPasswordForm() {
     const newPassword = String(form.get("newPassword"));
 
     try {
-      const response = await fetch("http://127.0.0.1:3001/identity/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: savedEmail, code, newPassword }),
+      const result = await resetPassword({
+        email: savedEmail,
+        code,
+        newPassword,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errMsg = Array.isArray(errorData.message) ? errorData.message[0] : errorData.message;
-        toast.error(errMsg || "Erro ao redefinir a senha.");
+      if (!result.ok) {
+        toast.error(result.message || "Erro ao redefinir a senha.");
         return;
       }
 
-      // Sucesso absoluto!
       toast.success("Senha redefinida com sucesso! Faça login.");
       router.push("/login");
     } catch {
@@ -356,12 +351,7 @@ export function RecoverPasswordForm() {
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="recover-email">E-mail</FieldLabel>
-                <Input
-                  id="recover-email"
-                  name="email"
-                  type="email"
-                  required
-                />
+                <Input id="recover-email" name="email" type="email" required />
               </Field>
 
               <Button type="submit" disabled={pending} className="w-full">
