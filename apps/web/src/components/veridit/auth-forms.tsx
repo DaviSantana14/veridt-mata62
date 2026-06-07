@@ -277,6 +277,8 @@ export function RecoverPasswordForm() {
 
   const [step, setStep] = useState<1 | 2>(1);
   const [savedEmail, setSavedEmail] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   async function handleRequestCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -294,6 +296,8 @@ export function RecoverPasswordForm() {
       }
 
       setSavedEmail(email);
+      setVerificationCode("");
+      setNewPassword("");
       setStep(2);
       toast.success("Se o e-mail estiver cadastrado, o código foi enviado.");
     } catch {
@@ -307,14 +311,10 @@ export function RecoverPasswordForm() {
     event.preventDefault();
     setPending(true);
 
-    const form = new FormData(event.currentTarget);
-    const code = String(form.get("code"));
-    const newPassword = String(form.get("newPassword"));
-
     try {
       const result = await resetPassword({
         email: savedEmail,
-        code,
+        code: verificationCode,
         newPassword,
       });
 
@@ -332,6 +332,13 @@ export function RecoverPasswordForm() {
     }
   }
 
+  function handleTryAnotherEmail() {
+    setSavedEmail("");
+    setVerificationCode("");
+    setNewPassword("");
+    setStep(1);
+  }
+
   return (
     <Card className="premium-card w-full rounded-2xl">
       <CardHeader>
@@ -347,11 +354,17 @@ export function RecoverPasswordForm() {
 
       <CardContent className="grid gap-5">
         {step === 1 ? (
-          <form onSubmit={handleRequestCode}>
+          <form key="request-code" onSubmit={handleRequestCode}>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="recover-email">E-mail</FieldLabel>
-                <Input id="recover-email" name="email" type="email" required />
+                <Input
+                  id="recover-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                />
               </Field>
 
               <Button type="submit" disabled={pending} className="w-full">
@@ -370,7 +383,7 @@ export function RecoverPasswordForm() {
             </FieldGroup>
           </form>
         ) : (
-          <form onSubmit={handleResetPassword}>
+          <form key="reset-password" onSubmit={handleResetPassword}>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="code">Código de Verificação</FieldLabel>
@@ -378,8 +391,16 @@ export function RecoverPasswordForm() {
                   id="code"
                   name="code"
                   type="text"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
                   maxLength={6}
                   placeholder="Ex: 123456"
+                  value={verificationCode}
+                  onChange={(event) =>
+                    setVerificationCode(
+                      event.target.value.replace(/\D/g, "").slice(0, 6),
+                    )
+                  }
                   required
                 />
               </Field>
@@ -390,6 +411,9 @@ export function RecoverPasswordForm() {
                   id="newPassword"
                   name="newPassword"
                   type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
                   required
                 />
               </Field>
@@ -402,7 +426,7 @@ export function RecoverPasswordForm() {
               <FieldDescription className="text-center">
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={handleTryAnotherEmail}
                   className="font-medium text-primary hover:underline"
                 >
                   Voltar e tentar outro e-mail
