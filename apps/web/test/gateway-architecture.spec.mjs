@@ -16,6 +16,9 @@ const gateway = readProjectFile("src/lib/gateway.ts");
 const authForms = readProjectFile("src/components/veridit/auth-forms.tsx");
 const authSession = readProjectFile("src/lib/auth-session.ts");
 const appShell = readProjectFile("src/components/layout/app-shell.tsx");
+const dashboardClient = readProjectFile(
+  "src/components/veridit/dashboard-client.tsx",
+);
 const logoutButton = readProjectFile(
   "src/components/veridit/logout-button.tsx",
 );
@@ -106,6 +109,16 @@ assert.match(
   appShell,
   /<AuthBoundary>/,
   "AppShell must protect internal pages with AuthBoundary",
+);
+assert.match(
+  dashboardClient,
+  /getAuthSession\(\)/,
+  "dashboard greeting must read the persisted auth session",
+);
+assert.doesNotMatch(
+  dashboardClient,
+  /title=\{`Bom dia, \$\{currentUser\.firstName\}/,
+  "dashboard greeting must not use the mocked first name",
 );
 assert.doesNotMatch(
   `${gateway}\n${authForms}\n${mockData}\n${profilePage}`,
