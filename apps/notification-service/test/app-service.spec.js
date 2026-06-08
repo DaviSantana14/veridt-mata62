@@ -156,6 +156,12 @@ async function sendsWelcomeEmailForRegisteredUser() {
   assert.equal(sentEmails.length, 1);
   assert.equal(sentEmails[0]?.to, 'ana@example.com');
   assert.match(sentEmails[0]?.subject, /Bem-vindo/);
+  assert.match(sentEmails[0]?.text, /Ana Silva/);
+  assert.match(sentEmails[0]?.text, /http:\/\/localhost:3000\/dashboard/);
+  assert.match(sentEmails[0]?.html, /VERIDIT/);
+  assert.match(sentEmails[0]?.html, /Ana Silva/);
+  assert.match(sentEmails[0]?.html, /http:\/\/localhost:3000\/dashboard/);
+  assert.match(sentEmails[0]?.html, /background-color: #102033/);
 }
 
 async function sendsPasswordResetEmailWithCode() {
@@ -194,7 +200,41 @@ async function sendsPasswordResetEmailWithCode() {
   assert.match(sentEmails[0]?.subject, /recuperação de senha/i);
   assert.match(sentEmails[0]?.text, /123456/);
   assert.match(sentEmails[0]?.text, /15 minutos/);
+  assert.match(sentEmails[0]?.text, /http:\/\/localhost:3000\/recuperar-senha/);
   assert.match(sentEmails[0]?.html, /123456/);
+  assert.match(sentEmails[0]?.html, /15 minutos/);
+  assert.match(sentEmails[0]?.html, /http:\/\/localhost:3000\/recuperar-senha/);
+  assert.match(sentEmails[0]?.html, /letter-spacing: 8px/);
+  assert.match(sentEmails[0]?.html, /VERIDIT/);
+}
+
+async function sendsCreditPurchaseEmailWithSummaryAndLink() {
+  const updates = [];
+  const sentEmails = [];
+  const emailProvider = {
+    sendEmail(input) {
+      sentEmails.push(input);
+      return Promise.resolve({ messageId: 'credit-message-123' });
+    },
+  };
+  const service = new AppService(makePrisma(updates), emailProvider);
+
+  const response = await service.createCreditPurchaseEmail(makeEvent());
+
+  assert.equal(response.recipient, 'buyer@example.com');
+  assert.equal(response.status, 'SENT');
+  assert.equal(sentEmails.length, 1);
+  assert.match(sentEmails[0]?.subject, /Compra de créditos Veridit confirmada/);
+  assert.match(sentEmails[0]?.text, /purchase-1/);
+  assert.match(sentEmails[0]?.text, /10 créditos/);
+  assert.match(sentEmails[0]?.text, /basic/);
+  assert.match(sentEmails[0]?.text, /http:\/\/localhost:3000\/creditos/);
+  assert.match(sentEmails[0]?.html, /purchase-1/);
+  assert.match(sentEmails[0]?.html, /10/);
+  assert.match(sentEmails[0]?.html, /basic/);
+  assert.match(sentEmails[0]?.html, /http:\/\/localhost:3000\/creditos/);
+  assert.match(sentEmails[0]?.html, /VERIDIT/);
+  assert.match(sentEmails[0]?.html, /background-color: #102033/);
 }
 
 async function marksPasswordResetSendFailureAsFailed() {
@@ -272,6 +312,7 @@ async function main() {
   await doesNotMarkSentEmailAsFailedWhenSentUpdateFails();
   await sendsWelcomeEmailForRegisteredUser();
   await sendsPasswordResetEmailWithCode();
+  await sendsCreditPurchaseEmailWithSummaryAndLink();
   await marksPasswordResetSendFailureAsFailed();
   await marksWelcomeSendFailureAsFailed();
   await doesNotMarkWelcomeEmailAsFailedWhenSentUpdateFails();
