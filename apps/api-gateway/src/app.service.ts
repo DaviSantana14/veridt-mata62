@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable } from '@nestjs/common';
+import { BadGatewayException, HttpException, Injectable } from '@nestjs/common';
 import {
   SERVICE_PORTS,
   type AuthResponse,
@@ -172,16 +172,19 @@ export class AppService {
       const payload: unknown = await response.json();
 
       if (!response.ok) {
-        throw new BadGatewayException({
-          service,
-          statusCode: response.status,
-          payload,
-        });
+        throw new HttpException(
+          {
+            service,
+            statusCode: response.status,
+            payload,
+          },
+          response.status,
+        );
       }
 
       return payload as T;
     } catch (error) {
-      if (error instanceof BadGatewayException) {
+      if (error instanceof HttpException) {
         throw error;
       }
 
