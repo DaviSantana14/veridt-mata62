@@ -8,6 +8,11 @@ import {
 } from '@veridit/contracts';
 import { EMAIL_PROVIDER } from './email/email.tokens';
 import type { EmailProvider } from './email/email.types';
+import {
+  renderCreditPurchaseEmail,
+  renderPasswordResetEmail,
+  renderWelcomeEmail,
+} from './email/templates';
 import { PrismaService } from './prisma/prisma.service';
 
 export interface NotificationResponse {
@@ -45,14 +50,17 @@ export class AppService {
   async createCreditPurchaseEmail(
     event: CreditPurchaseCreatedEvent,
   ): Promise<NotificationResponse> {
-    const subject = 'Compra de creditos Veridit confirmada';
-    const body = `Compra ${event.purchaseId} confirmou ${event.credits} creditos para o pacote ${event.packageName}.`;
+    const email = renderCreditPurchaseEmail({
+      purchaseId: event.purchaseId,
+      packageName: event.packageName,
+      credits: event.credits,
+    });
 
     return this.createEmailNotification({
       recipient: event.payerEmail,
-      subject,
-      body,
-      html: '<p>Sua compra de creditos Veridit foi confirmada.</p>',
+      subject: email.subject,
+      body: email.text,
+      html: email.html,
       eventName: VERIDIT_EVENTS.creditPurchased,
       metadata: {
         purchaseId: event.purchaseId,
@@ -65,14 +73,15 @@ export class AppService {
   async createUserRegisteredEmail(
     event: UserRegisteredEvent,
   ): Promise<NotificationResponse> {
-    const subject = 'Bem-vindo ao Veridit';
-    const body = `Ola ${event.fullName}, sua conta Veridit foi criada com sucesso.`;
+    const email = renderWelcomeEmail({
+      fullName: event.fullName,
+    });
 
     return this.createEmailNotification({
       recipient: event.email,
-      subject,
-      body,
-      html: `<p>Ola ${event.fullName}, sua conta Veridit foi criada com sucesso.</p>`,
+      subject: email.subject,
+      body: email.text,
+      html: email.html,
       eventName: VERIDIT_EVENTS.userRegistered,
       metadata: {
         userId: event.userId,
@@ -84,14 +93,16 @@ export class AppService {
   async createPasswordResetEmail(
     event: PasswordResetRequestedEvent,
   ): Promise<NotificationResponse> {
-    const subject = 'Código de recuperação de senha Veridit';
-    const body = `Olá ${event.fullName}, seu código de recuperação é ${event.code}. Ele expira em 15 minutos.`;
+    const email = renderPasswordResetEmail({
+      fullName: event.fullName,
+      code: event.code,
+    });
 
     return this.createEmailNotification({
       recipient: event.email,
-      subject,
-      body,
-      html: `<p>Olá ${event.fullName},</p><p>Seu código de recuperação de senha Veridit é <strong>${event.code}</strong>.</p><p>Ele expira em 15 minutos.</p>`,
+      subject: email.subject,
+      body: email.text,
+      html: email.html,
       eventName: VERIDIT_EVENTS.passwordResetRequested,
       metadata: {
         userId: event.userId,

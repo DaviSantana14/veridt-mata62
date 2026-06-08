@@ -46,9 +46,11 @@ SMTP_SECURE=false
 SMTP_USER=seuemail@gmail.com
 SMTP_PASS=sua_senha_de_app_do_google
 EMAIL_FROM="Veridit <seuemail@gmail.com>"
+FRONTEND_ORIGIN=http://localhost:3000
 ```
 
 Use senha de app, não a senha normal da conta Google. Essa configuração é indicada para localhost e demo pequena, não para produção.
+O `FRONTEND_ORIGIN` é usado nos botões dos emails transacionais.
 
 ## Infraestrutura
 
