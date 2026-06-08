@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 const toneClass = {
@@ -23,14 +22,12 @@ export function MetricPanel({
   value,
   description,
   icon: Icon,
-  progress,
   tone = "primary",
 }: {
   label: string;
   value: string | number;
   description?: string;
   icon: LucideIcon;
-  progress?: number;
   tone?: keyof typeof toneClass;
 }) {
   return (
@@ -50,9 +47,6 @@ export function MetricPanel({
       </CardHeader>
       <CardContent>
         <p className="text-3xl font-semibold leading-none">{value}</p>
-        {typeof progress === "number" ? (
-          <Progress value={progress} className="mt-5 h-2" aria-label={`${label}: ${progress}%`} />
-        ) : null}
       </CardContent>
     </Card>
   );

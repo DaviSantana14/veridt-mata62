@@ -95,7 +95,6 @@ export function DashboardClient() {
           value={records.length}
           description="Base demonstrativa"
           icon={FileText}
-          progress={92}
         />
         <MetricPanel
           label="Concluídos"
@@ -103,7 +102,6 @@ export function DashboardClient() {
           description="Com hash disponível"
           icon={CheckCircle2}
           tone="success"
-          progress={Math.round((completed / records.length) * 100)}
         />
         <MetricPanel
           label="Em validação"
@@ -111,7 +109,6 @@ export function DashboardClient() {
           description="Processamento ativo"
           icon={Clock3}
           tone="warning"
-          progress={28}
         />
         <MetricPanel
           label="Créditos"
@@ -119,7 +116,6 @@ export function DashboardClient() {
           description="Saldo para novas capturas"
           icon={CreditCard}
           tone="evidence"
-          progress={64}
         />
       </section>
 
