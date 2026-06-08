@@ -1,14 +1,12 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
-  Bell,
   BookOpenCheck,
   CreditCard,
   FileCheck2,
   LayoutDashboard,
   Menu,
   Plus,
-  Search,
   ShieldCheck,
   UserRound,
   Video,
@@ -33,8 +31,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { VeriditLogo } from "@/components/layout/veridit-logo";
+import { UserMenu } from "@/components/layout/user-menu";
 import { AuthBoundary } from "@/components/veridit/auth-boundary";
-import { LogoutButton } from "@/components/veridit/logout-button";
 import { currentUser } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -242,35 +240,11 @@ export function ProductShell({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <div className="hidden min-h-10 items-center gap-2 rounded-full border bg-card/80 px-3 text-sm text-muted-foreground lg:flex">
-                    <Search aria-hidden="true" />
-                    Cofre de evidências Veridit
-                  </div>
                   <Badge className="hidden rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)] sm:inline-flex">
                     <ShieldCheck aria-hidden="true" />
                     {currentUser.credits} créditos
                   </Badge>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="icon" aria-label="Notificações">
-                        <Bell aria-hidden="true" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Notificações</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <LogoutButton variant="outline" size="icon" aria-label="Sair">
-                        <span className="sr-only">Sair</span>
-                      </LogoutButton>
-                    </TooltipTrigger>
-                    <TooltipContent>Sair</TooltipContent>
-                  </Tooltip>
-                  <Avatar className="size-9 border border-primary/20">
-                    <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
-                      {currentUser.initials}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserMenu />
                 </div>
               </div>
             </header>
