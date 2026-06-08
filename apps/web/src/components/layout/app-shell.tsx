@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
-  BookOpenCheck,
   CreditCard,
   FileCheck2,
   LayoutDashboard,
@@ -74,13 +73,6 @@ const navItems: Array<{
     icon: UserRound,
   },
 ];
-
-const activeLabels: Record<ActiveRoute, string> = {
-  dashboard: "Visão operacional",
-  capture: "Nova evidência",
-  credits: "Créditos e cobrança",
-  profile: "Conta e segurança",
-};
 
 function NavigationList({
   active,
@@ -223,10 +215,14 @@ export function ProductShell({
                   <div className="xl:hidden">
                     <VeriditLogo className="min-h-10 text-lg" />
                   </div>
-                  <Badge variant="secondary" className="hidden rounded-full md:inline-flex">
-                    <BookOpenCheck aria-hidden="true" />
-                    {activeLabels[active]}
-                  </Badge>
+                  {active === "dashboard" ? (
+                    <Badge
+                      variant="secondary"
+                      className="hidden rounded-full md:inline-flex"
+                    >
+                      Painel Veridit
+                    </Badge>
+                  ) : null}
                 </div>
 
                 <div className="flex items-center gap-2">

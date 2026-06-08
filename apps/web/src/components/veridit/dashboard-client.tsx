@@ -73,7 +73,6 @@ export function DashboardClient() {
   return (
     <div className="grid gap-8">
       <SectionHeader
-        eyebrow="Painel Veridit"
         title={`Bom dia, ${firstName}. Suas evidências estão organizadas para auditoria.`}
         description="Acompanhe capturas, relatórios, status e saldo em uma visão operacional para rotinas jurídicas."
         action={
