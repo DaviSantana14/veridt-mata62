@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -17,7 +18,29 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user-dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { UserEventsPublisher } from './messaging/user-events.publisher';
+
+type UserEntity = {
+  id: string;
+  fullName: string;
+  email: string;
+  cpf: string;
+  profile: 'COMMON_USER' | 'LAWYER';
+  createdAt: Date;
+};
+
+function toUserResponse(user: UserEntity): UserResponse {
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    cpf: user.cpf,
+    profile: user.profile,
+    createdAt: user.createdAt.toISOString(),
+  };
+}
 
 @Injectable()
 export class AppService {
@@ -71,13 +94,88 @@ export class AppService {
       occurredAt: user.createdAt.toISOString(),
     });
 
+    return toUserResponse(user);
+  }
+
+  async getUser(id: string): Promise<UserResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    return toUserResponse(user);
+  }
+
+  async updateUser(
+    id: string,
+    body: UpdateUserProfileDto,
+  ): Promise<UserResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const email = body.email.toLowerCase().trim();
+    const fullName = body.fullName.trim();
+
+    const existingUserWithEmail = await this.prisma.user.findFirst({
+      where: {
+        email,
+        NOT: { id },
+      },
+    });
+
+    if (existingUserWithEmail) {
+      throw new BadRequestException('E-mail já cadastrado');
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id },
+      data: {
+        fullName,
+        email,
+      },
+    });
+
+    return toUserResponse(updatedUser);
+  }
+
+  async changePassword(
+    id: string,
+    body: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user || !user.passwordHash) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const passwordMatch = await bcrypt.compare(
+      body.currentPassword,
+      user.passwordHash,
+    );
+
+    if (!passwordMatch) {
+      throw new UnauthorizedException('Senha atual inválida');
+    }
+
+    const passwordHash = await bcrypt.hash(body.newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
+
     return {
-      id: user.id,
-      fullName: user.fullName,
-      email: user.email,
-      cpf: user.cpf,
-      profile: user.profile,
-      createdAt: user.createdAt.toISOString(),
+      message: 'Senha alterada com sucesso.',
     };
   }
 

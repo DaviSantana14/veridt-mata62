@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { getAuthSession } from "@/lib/auth-session";
+import {
+  AUTH_SESSION_CHANGED_EVENT,
+  getAuthSession,
+} from "@/lib/auth-session";
 import { currentUser } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -24,17 +27,44 @@ export function getInitials(name: string) {
   return initials || currentUser.initials;
 }
 
-export function useSessionUserDisplay(): SessionUserDisplay {
-  const [user] = useState(() => {
-    const session = getAuthSession();
+function subscribeToSessionUser(onStoreChange: () => void) {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
 
-    return {
-      name: session?.user.fullName ?? currentUser.name,
-      email: session?.user.email ?? currentUser.email,
-    };
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
+
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
+  };
+}
+
+function getSessionUserSnapshot() {
+  const session = getAuthSession();
+
+  return JSON.stringify({
+    name: session?.user.fullName ?? currentUser.name,
+    email: session?.user.email ?? currentUser.email,
   });
+}
 
-  return user;
+function getServerSessionUserSnapshot() {
+  return JSON.stringify({
+    name: currentUser.name,
+    email: currentUser.email,
+  });
+}
+
+export function useSessionUserDisplay(): SessionUserDisplay {
+  const snapshot = useSyncExternalStore(
+    subscribeToSessionUser,
+    getSessionUserSnapshot,
+    getServerSessionUserSnapshot,
+  );
+
+  return useMemo(() => JSON.parse(snapshot) as SessionUserDisplay, [snapshot]);
 }
 
 export function SessionUserIdentity({

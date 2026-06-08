@@ -47,6 +47,16 @@ export interface LoginUserRequest {
   password: string;
 }
 
+export interface UpdateUserProfileRequest {
+  fullName: string;
+  email: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export interface UserResponse {
   id: string;
   fullName: string;

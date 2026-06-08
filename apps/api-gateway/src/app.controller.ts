@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  Patch,
   Post,
   HttpCode,
   HttpStatus,
@@ -25,6 +27,8 @@ import { LoginUserDto } from './dto/login-user.dto';
 // Importe os DTOs que você copiou
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Controller()
 export class AppController {
@@ -49,6 +53,27 @@ export class AppController {
   @Post('identity/users')
   createUser(@Body() body: CreateUserDto): Promise<UserResponse> {
     return this.appService.createUser(body);
+  }
+
+  @Get('identity/users/:id')
+  getUser(@Param('id') id: string): Promise<UserResponse> {
+    return this.appService.getUser(id);
+  }
+
+  @Patch('identity/users/:id')
+  updateUser(
+    @Param('id') id: string,
+    @Body() body: UpdateUserProfileDto,
+  ): Promise<UserResponse> {
+    return this.appService.updateUser(id, body);
+  }
+
+  @Patch('identity/users/:id/password')
+  changePassword(
+    @Param('id') id: string,
+    @Body() body: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    return this.appService.changePassword(id, body);
   }
 
   @Post('identity/auth/login')
