@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  getInitials,
+  useSessionUserDisplay,
+} from "@/components/layout/session-user";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,31 +17,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { clearAuthSession, getAuthSession } from "@/lib/auth-session";
-import { currentUser } from "@/lib/mock-data";
-
-function getInitials(name: string) {
-  const initials = name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
-
-  return initials || currentUser.initials;
-}
+import { clearAuthSession } from "@/lib/auth-session";
 
 export function UserMenu() {
   const router = useRouter();
-  const [user] = useState(() => {
-    const session = getAuthSession();
-
-    return {
-      name: session?.user.fullName ?? currentUser.name,
-      email: session?.user.email ?? currentUser.email,
-    };
-  });
+  const user = useSessionUserDisplay();
 
   function handleLogout() {
     clearAuthSession();

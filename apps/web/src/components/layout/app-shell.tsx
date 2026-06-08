@@ -12,7 +12,6 @@ import {
   Video,
 } from "lucide-react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -31,6 +30,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { VeriditLogo } from "@/components/layout/veridit-logo";
+import { SessionUserIdentity } from "@/components/layout/session-user";
 import { UserMenu } from "@/components/layout/user-menu";
 import { AuthBoundary } from "@/components/veridit/auth-boundary";
 import { currentUser } from "@/lib/mock-data";
@@ -161,17 +161,7 @@ function SidebarNav({ active }: { active: ActiveRoute }) {
         </div>
 
         <div className="mt-auto rounded-2xl border bg-background/80 p-4">
-          <div className="flex items-center gap-3">
-            <Avatar className="size-10 border border-primary/20">
-              <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
-                {currentUser.initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{currentUser.name}</p>
-              <p className="truncate text-xs text-muted-foreground">{currentUser.email}</p>
-            </div>
-          </div>
+          <SessionUserIdentity />
         </div>
       </div>
     </aside>
