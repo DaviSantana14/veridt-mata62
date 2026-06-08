@@ -9,10 +9,8 @@ import {
   FileText,
   Plus,
   Search,
-  ShieldCheck,
 } from "lucide-react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -124,17 +122,6 @@ export function DashboardClient() {
           progress={64}
         />
       </section>
-
-      <Alert className="border-primary/20 bg-primary/5">
-        <ShieldCheck aria-hidden="true" />
-        <AlertTitle>
-          Ambiente demonstrativo com fluxos reais preservados
-        </AlertTitle>
-        <AlertDescription>
-          Registros, login e relatórios usam dados mockados; captura, cadastro e
-          pagamento ainda tentam o API Gateway quando disponível.
-        </AlertDescription>
-      </Alert>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="premium-card rounded-2xl">
