@@ -1,7 +1,8 @@
-import { BadGatewayException, Injectable } from '@nestjs/common';
+import { BadGatewayException, HttpException, Injectable } from '@nestjs/common';
 import {
   SERVICE_PORTS,
   type AuthResponse,
+  type ChangePasswordRequest,
   type ContentRecordResponse,
   type CreditPackageResponse,
   type HealthResponse,
@@ -10,6 +11,7 @@ import {
   type RegisterUserRequest,
   type ServiceName,
   type StartCaptureRequest,
+  type UpdateUserProfileRequest,
   type UserResponse,
 } from '@veridit/contracts';
 import { LoginDto } from './dto/login.dto';
@@ -71,6 +73,38 @@ export class AppService {
       'identity-service',
       this.urls.identity,
       '/users',
+      body,
+    );
+  }
+
+  getUser(id: string): Promise<UserResponse> {
+    return this.getFromService(
+      'identity-service',
+      this.urls.identity,
+      `/users/${id}`,
+    );
+  }
+
+  updateUser(
+    id: string,
+    body: UpdateUserProfileRequest,
+  ): Promise<UserResponse> {
+    return this.patchToService(
+      'identity-service',
+      this.urls.identity,
+      `/users/${id}`,
+      body,
+    );
+  }
+
+  changePassword(
+    id: string,
+    body: ChangePasswordRequest,
+  ): Promise<{ message: string }> {
+    return this.patchToService(
+      'identity-service',
+      this.urls.identity,
+      `/users/${id}/password`,
       body,
     );
   }
@@ -162,6 +196,21 @@ export class AppService {
     });
   }
 
+  private patchToService<T>(
+    service: ServiceName,
+    baseUrl: string,
+    path: string,
+    body: object,
+  ): Promise<T> {
+    return this.request<T>(service, `${baseUrl}${path}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
   private async request<T>(
     service: ServiceName,
     url: string,
@@ -172,16 +221,19 @@ export class AppService {
       const payload: unknown = await response.json();
 
       if (!response.ok) {
-        throw new BadGatewayException({
-          service,
-          statusCode: response.status,
-          payload,
-        });
+        throw new HttpException(
+          {
+            service,
+            statusCode: response.status,
+            payload,
+          },
+          response.status,
+        );
       }
 
       return payload as T;
     } catch (error) {
-      if (error instanceof BadGatewayException) {
+      if (error instanceof HttpException) {
         throw error;
       }
 

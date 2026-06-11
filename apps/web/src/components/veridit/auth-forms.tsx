@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { saveAuthSession } from "@/lib/auth-session";
 import {
@@ -13,7 +13,6 @@ import {
   resetPassword,
 } from "@/lib/gateway";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -38,18 +37,6 @@ function SubmitIcon({ pending }: { pending: boolean }) {
       aria-hidden="true"
     />
   ) : null;
-}
-
-function AuthNotice() {
-  return (
-    <Alert className="border-primary/20 bg-primary/5">
-      <ShieldCheck aria-hidden="true" />
-      <AlertTitle>Acesso demonstrativo</AlertTitle>
-      <AlertDescription>
-        Autenticação e recuperação seguem integradas ao gateway.
-      </AlertDescription>
-    </Alert>
-  );
 }
 
 export function LoginForm() {
@@ -93,8 +80,6 @@ export function LoginForm() {
       </CardHeader>
 
       <CardContent className="grid gap-5">
-        <AuthNotice />
-
         <form onSubmit={onSubmit}>
           <FieldGroup>
             <Field>

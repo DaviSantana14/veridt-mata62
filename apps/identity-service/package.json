@@ -8,6 +8,7 @@
     "start": "nest start",
     "start:prod": "node dist/main",
     "test:events": "npm run build && node test/user-events-publisher.spec.js",
+    "test:profile": "npm run build && node test/profile-service.spec.js",
     "lint": "eslint \"src/**/*.ts\" --ignore-pattern \"src/generated/**\"",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init"

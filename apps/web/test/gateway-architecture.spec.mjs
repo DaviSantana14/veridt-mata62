@@ -16,11 +16,15 @@ const gateway = readProjectFile("src/lib/gateway.ts");
 const authForms = readProjectFile("src/components/veridit/auth-forms.tsx");
 const authSession = readProjectFile("src/lib/auth-session.ts");
 const appShell = readProjectFile("src/components/layout/app-shell.tsx");
+const dashboardClient = readProjectFile(
+  "src/components/veridit/dashboard-client.tsx",
+);
 const logoutButton = readProjectFile(
   "src/components/veridit/logout-button.tsx",
 );
 const mockData = readProjectFile("src/lib/mock-data.ts");
 const profilePage = readProjectFile("src/app/perfil/page.tsx");
+const profileClient = readProjectFile("src/components/veridit/profile-client.tsx");
 
 assert.match(
   gateway,
@@ -107,8 +111,68 @@ assert.match(
   /<AuthBoundary>/,
   "AppShell must protect internal pages with AuthBoundary",
 );
+assert.match(
+  dashboardClient,
+  /getAuthSession\(\)/,
+  "dashboard greeting must read the persisted auth session",
+);
+assert.doesNotMatch(
+  dashboardClient,
+  /title=\{`Bom dia, \$\{currentUser\.firstName\}/,
+  "dashboard greeting must not use the mocked first name",
+);
 assert.doesNotMatch(
   `${gateway}\n${authForms}\n${mockData}\n${profilePage}`,
   /\bphone\b|Phone|Telefone|telefone/,
   "registration and profile UI must not use phone fields",
+);
+assert.match(
+  gateway,
+  /function getUserProfile\(userId: string\)/,
+  "web gateway helpers must expose user profile fetch",
+);
+assert.match(
+  gateway,
+  /function updateUserProfile\(/,
+  "web gateway helpers must expose profile update",
+);
+assert.match(
+  gateway,
+  /function changeUserPassword\(/,
+  "web gateway helpers must expose password change",
+);
+assert.doesNotMatch(
+  profileClient,
+  /fetch\(/,
+  "profile UI must use gateway helpers instead of direct fetch calls",
+);
+assert.doesNotMatch(
+  `${profilePage}\n${profileClient}`,
+  /currentUser\.(name|email|initials)/,
+  "profile UI must not render mocked user identity fields",
+);
+assert.doesNotMatch(
+  `${profilePage}\n${profileClient}`,
+  /Preferências|Autenticação de dois fatores|PreferenceRow|Switch/,
+  "profile UI must not render preferences or two-factor authentication controls",
+);
+assert.match(
+  profileClient,
+  /name=["']cpf["'][\s\S]*readOnly/,
+  "profile CPF field must be rendered as read-only",
+);
+assert.match(
+  profileClient,
+  /saveAuthSession\(nextSession\)/,
+  "saving profile must refresh persisted auth session",
+);
+assert.match(
+  profileClient,
+  /const formElement = event\.currentTarget;[\s\S]*const form = new FormData\(formElement\);[\s\S]*formElement\.reset\(\);/,
+  "password form must keep a stable form reference across async password change",
+);
+assert.doesNotMatch(
+  profileClient,
+  /event\.currentTarget\.reset\(\)/,
+  "password form must not access event.currentTarget after awaiting password change",
 );

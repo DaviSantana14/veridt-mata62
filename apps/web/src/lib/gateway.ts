@@ -27,7 +27,7 @@ async function requestGateway<T>(
       return {
         ok: false,
         status: response.status,
-        message: data?.message ?? `Erro ${response.status}`,
+        message: data?.message ?? data?.payload?.message ?? `Erro ${response.status}`,
       };
     }
 
@@ -111,6 +111,52 @@ export function resetPassword(payload: {
 }) {
   return requestGateway<{ message: string }>("/identity/auth/reset-password", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getUserProfile(userId: string) {
+  return requestGateway<{
+    id: string;
+    fullName: string;
+    email: string;
+    cpf: string;
+    profile: "COMMON_USER" | "LAWYER";
+    createdAt: string;
+  }>(`/identity/users/${userId}`, {
+    method: "GET",
+  });
+}
+
+export function updateUserProfile(
+  userId: string,
+  payload: {
+    fullName: string;
+    email: string;
+  },
+) {
+  return requestGateway<{
+    id: string;
+    fullName: string;
+    email: string;
+    cpf: string;
+    profile: "COMMON_USER" | "LAWYER";
+    createdAt: string;
+  }>(`/identity/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function changeUserPassword(
+  userId: string,
+  payload: {
+    currentPassword: string;
+    newPassword: string;
+  },
+) {
+  return requestGateway<{ message: string }>(`/identity/users/${userId}/password`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }

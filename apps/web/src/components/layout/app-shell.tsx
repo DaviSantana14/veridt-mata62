@@ -1,20 +1,16 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
-  Bell,
-  BookOpenCheck,
   CreditCard,
   FileCheck2,
   LayoutDashboard,
   Menu,
   Plus,
-  Search,
   ShieldCheck,
   UserRound,
   Video,
 } from "lucide-react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,8 +29,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { VeriditLogo } from "@/components/layout/veridit-logo";
+import { SessionUserIdentity } from "@/components/layout/session-user";
+import { UserMenu } from "@/components/layout/user-menu";
 import { AuthBoundary } from "@/components/veridit/auth-boundary";
-import { LogoutButton } from "@/components/veridit/logout-button";
 import { currentUser } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -76,13 +73,6 @@ const navItems: Array<{
     icon: UserRound,
   },
 ];
-
-const activeLabels: Record<ActiveRoute, string> = {
-  dashboard: "Visão operacional",
-  capture: "Nova evidência",
-  credits: "Créditos e cobrança",
-  profile: "Conta e segurança",
-};
 
 function NavigationList({
   active,
@@ -163,17 +153,7 @@ function SidebarNav({ active }: { active: ActiveRoute }) {
         </div>
 
         <div className="mt-auto rounded-2xl border bg-background/80 p-4">
-          <div className="flex items-center gap-3">
-            <Avatar className="size-10 border border-primary/20">
-              <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
-                {currentUser.initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{currentUser.name}</p>
-              <p className="truncate text-xs text-muted-foreground">{currentUser.email}</p>
-            </div>
-          </div>
+          <SessionUserIdentity />
         </div>
       </div>
     </aside>
@@ -235,42 +215,22 @@ export function ProductShell({
                   <div className="xl:hidden">
                     <VeriditLogo className="min-h-10 text-lg" />
                   </div>
-                  <Badge variant="secondary" className="hidden rounded-full md:inline-flex">
-                    <BookOpenCheck aria-hidden="true" />
-                    {activeLabels[active]}
-                  </Badge>
+                  {active === "dashboard" ? (
+                    <Badge
+                      variant="secondary"
+                      className="hidden rounded-full md:inline-flex"
+                    >
+                      Painel Veridit
+                    </Badge>
+                  ) : null}
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <div className="hidden min-h-10 items-center gap-2 rounded-full border bg-card/80 px-3 text-sm text-muted-foreground lg:flex">
-                    <Search aria-hidden="true" />
-                    Cofre de evidências Veridit
-                  </div>
                   <Badge className="hidden rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)] sm:inline-flex">
                     <ShieldCheck aria-hidden="true" />
                     {currentUser.credits} créditos
                   </Badge>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="icon" aria-label="Notificações">
-                        <Bell aria-hidden="true" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Notificações</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <LogoutButton variant="outline" size="icon" aria-label="Sair">
-                        <span className="sr-only">Sair</span>
-                      </LogoutButton>
-                    </TooltipTrigger>
-                    <TooltipContent>Sair</TooltipContent>
-                  </Tooltip>
-                  <Avatar className="size-9 border border-primary/20">
-                    <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
-                      {currentUser.initials}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserMenu />
                 </div>
               </div>
             </header>
