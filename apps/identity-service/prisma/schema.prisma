@@ -3,10 +3,6 @@ generator client {
   moduleFormat = "cjs"
 }
 
-datasource db {
-  provider = "postgresql"
-}
-
 enum UserProfile {
   COMMON_USER
   LAWYER
@@ -35,4 +31,8 @@ model PasswordResetToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+datasource db {
+  provider = "postgresql"
 }

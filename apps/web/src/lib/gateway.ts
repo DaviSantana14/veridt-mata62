@@ -13,13 +13,13 @@ async function requestGateway<T>(
     const url = `${BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 
     const response = await fetch(url, {
-      ...init,
+      method: init?.method || 'GET',  
       headers: {
         "Content-Type": "application/json",
         ...(init?.headers ?? {}),
       },
+      body: init?.body,  
     });
-
     const text = await response.text();
     const data = text ? JSON.parse(text) : null;
 

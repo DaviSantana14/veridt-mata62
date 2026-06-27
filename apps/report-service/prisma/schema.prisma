@@ -1,11 +1,6 @@
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "cjs"
-}
-
-datasource db {
-  provider = "postgresql"
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client"  // ← Output na raiz
 }
 
 enum ReportStatus {
@@ -27,4 +22,9 @@ model RecordReport {
 
   @@index([recordId])
   @@index([userId])
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }

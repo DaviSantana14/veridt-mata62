@@ -4,10 +4,6 @@ generator client {
   moduleFormat = "cjs"
 }
 
-datasource db {
-  provider = "postgresql"
-}
-
 enum NotificationChannel {
   EMAIL
 }
@@ -37,4 +33,9 @@ model Notification {
   @@index([recipient])
   @@index([eventName])
   @@index([status])
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }

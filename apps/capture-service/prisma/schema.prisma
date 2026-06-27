@@ -4,9 +4,6 @@ generator client {
   moduleFormat = "cjs"
 }
 
-datasource db {
-  provider = "postgresql"
-}
 enum RecordStatus {
   STARTED
   COMPLETED
@@ -44,4 +41,9 @@ model CaptureAsset {
   record        ContentRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
 
   @@index([recordId])
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }

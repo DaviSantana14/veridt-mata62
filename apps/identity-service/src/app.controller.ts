@@ -15,7 +15,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
-@Controller()
+@Controller('identity')
 export class AppController {
   constructor(private readonly appService: AppService) {}
 

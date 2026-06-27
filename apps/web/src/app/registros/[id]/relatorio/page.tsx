@@ -1,11 +1,11 @@
-import Link from "next/link";
-import { ArrowLeft, Download, Printer } from "lucide-react";
-
-import { AppShell } from "@/components/layout/app-shell";
-import { Button } from "@/components/ui/button";
-import { ReportDocument } from "@/components/veridit/report-document";
-import { SectionHeader } from "@/components/veridit/section-header";
+import { notFound } from "next/navigation";
 import { getRecordById } from "@/lib/mock-data";
+import ReportClient from "./report-client";
+import { AppShell } from "@/components/layout/app-shell";
+import { SectionHeader } from "@/components/veridit/section-header";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default async function ReportPage({
   params,
@@ -13,7 +13,12 @@ export default async function ReportPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
   const record = getRecordById(id);
+
+  if (!record) {
+    notFound();
+  }
 
   return (
     <AppShell active="dashboard">
@@ -24,26 +29,15 @@ export default async function ReportPage({
               <ArrowLeft aria-hidden="true" />
             </Link>
           </Button>
+
           <SectionHeader
             eyebrow="Relatório"
             title="Relatório do registro digital"
             description={`${record.id} - ${record.title}`}
-            action={
-              <>
-                <Button variant="outline">
-                  <Printer data-icon="inline-start" aria-hidden="true" />
-                  Imprimir
-                </Button>
-                <Button>
-                  <Download data-icon="inline-start" aria-hidden="true" />
-                  PDF
-                </Button>
-              </>
-            }
           />
         </div>
 
-        <ReportDocument record={record} />
+        <ReportClient key={record.id} record={record} />
       </div>
     </AppShell>
   );

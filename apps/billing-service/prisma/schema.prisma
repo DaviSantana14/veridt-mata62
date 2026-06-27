@@ -4,10 +4,6 @@ generator client {
   moduleFormat = "cjs"
 }
 
-datasource db {
-  provider = "postgresql"
-}
-
 enum CreditPackageName {
   BASIC
   MEDIUM
@@ -51,4 +47,9 @@ model UserCreditBalance {
   userId    String   @id
   credits   Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }

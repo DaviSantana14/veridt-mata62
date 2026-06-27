@@ -1,4 +1,7 @@
+"use client";
 import Link from "next/link";
+import { use } from "react";
+import { notFound } from "next/navigation";
 import {
   Archive,
   Camera,
@@ -23,15 +26,24 @@ import { EvidencePreview } from "@/components/veridit/evidence-preview";
 import { SectionHeader } from "@/components/veridit/section-header";
 import { StatusPill } from "@/components/veridit/status-pill";
 import { Timeline } from "@/components/veridit/timeline";
-import { chainOfCustody, getRecordById } from "@/lib/mock-data";
 
-export default async function RecordDetailsPage({
+import { chainOfCustody, getRecordById } from "@/lib/mock-data";
+import { buildRecordZip } from "@/lib/zip/build-record-zip";
+import { saveAs } from "file-saver";
+
+export default function RecordDetailsPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const { id } = use(params);
+
   const record = getRecordById(id);
+
+  if (!record) {
+    notFound();
+  }
+
   const MediaIcon = record.kind === "video" ? Video : Camera;
 
   return (
@@ -44,10 +56,12 @@ export default async function RecordDetailsPage({
           meta={
             <div className="flex flex-wrap gap-2">
               <StatusPill status={record.status} />
+
               <Badge variant="secondary" className="rounded-full">
                 <MediaIcon aria-hidden="true" />
                 {record.kind === "video" ? "Vídeo" : "Screenshot"}
               </Badge>
+
               <Badge variant="secondary" className="rounded-full">
                 <FileText aria-hidden="true" />
                 Relatório disponível
@@ -58,12 +72,21 @@ export default async function RecordDetailsPage({
             <>
               <Button asChild variant="outline">
                 <Link href={`/registros/${record.id}/relatorio`}>
-                  <Printer data-icon="inline-start" aria-hidden="true" />
+                  <Printer aria-hidden="true" />
                   Ver relatório
                 </Link>
               </Button>
-              <Button type="button">
-                <Download data-icon="inline-start" aria-hidden="true" />
+
+              <Button
+                type="button"
+                onClick={async () => {
+                  const zip = await buildRecordZip(record);
+                  const blob = await zip.generateAsync({ type: "blob" });
+
+                  saveAs(blob, `registro-${record.id}.zip`);
+                }}
+              >
+                <Download />
                 Baixar ZIP
               </Button>
             </>
@@ -74,8 +97,11 @@ export default async function RecordDetailsPage({
           <Card className="premium-card rounded-2xl">
             <CardHeader>
               <CardTitle>Pré-visualização da evidência</CardTitle>
-              <CardDescription>Conteúdo capturado durante o registro.</CardDescription>
+              <CardDescription>
+                Conteúdo capturado durante o registro.
+              </CardDescription>
             </CardHeader>
+
             <CardContent>
               <EvidencePreview
                 title={record.title}
@@ -90,20 +116,28 @@ export default async function RecordDetailsPage({
             <Card className="premium-card rounded-2xl">
               <CardHeader>
                 <CardTitle>Detalhes do registro</CardTitle>
-                <CardDescription>Metadados essenciais para conferência.</CardDescription>
+                <CardDescription>
+                  Metadados essenciais para conferência.
+                </CardDescription>
               </CardHeader>
+
               <CardContent>
                 <dl className="grid gap-4 text-sm">
                   <div>
                     <dt className="text-muted-foreground">URL</dt>
-                    <dd className="mt-1 break-all font-medium">{record.url}</dd>
+                    <dd className="mt-1 break-all font-medium">
+                      {record.url}
+                    </dd>
                   </div>
+
                   <Separator />
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <dt className="text-muted-foreground">ID</dt>
                       <dd className="mt-1 font-medium">{record.id}</dd>
                     </div>
+
                     <div>
                       <dt className="text-muted-foreground">Tipo</dt>
                       <dd className="mt-1 font-medium">
@@ -111,28 +145,45 @@ export default async function RecordDetailsPage({
                       </dd>
                     </div>
                   </div>
+
                   <div>
                     <dt className="text-muted-foreground">Criação</dt>
                     <dd className="mt-1 font-medium">{record.createdAt}</dd>
                   </div>
+
                   <div>
                     <dt className="text-muted-foreground">Conclusão</dt>
-                    <dd className="mt-1 font-medium">{record.completedAt ?? "Em processamento"}</dd>
+                    <dd className="mt-1 font-medium">
+                      {record.completedAt ?? "Em processamento"}
+                    </dd>
                   </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <dt className="text-muted-foreground">Duração</dt>
-                      <dd className="mt-1 font-medium">{record.duration ?? "Instantânea"}</dd>
+                      <dd className="mt-1 font-medium">
+                        {record.duration ?? "Instantânea"}
+                      </dd>
                     </div>
+
                     <div>
                       <dt className="text-muted-foreground">Tamanho</dt>
-                      <dd className="mt-1 font-medium">{record.size ?? "Calculando"}</dd>
+                      <dd className="mt-1 font-medium">
+                        {record.size ?? "Calculando"}
+                      </dd>
                     </div>
                   </div>
+
                   <div>
-                    <dt className="text-muted-foreground">Hash de Integridade</dt>
+                    <dt className="text-muted-foreground">
+                      Hash de Integridade
+                    </dt>
+
                     <dd className="mt-2 flex items-start gap-2 break-all rounded-xl border bg-background/80 p-3 font-mono text-xs leading-6">
-                      <Archive className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+                      <Archive
+                        className="mt-0.5 shrink-0 text-primary"
+                        aria-hidden="true"
+                      />
                       {record.hash}
                     </dd>
                   </div>
@@ -143,8 +194,11 @@ export default async function RecordDetailsPage({
             <Card className="premium-card rounded-2xl">
               <CardHeader>
                 <CardTitle>Cadeia de custódia</CardTitle>
-                <CardDescription>Eventos documentados desta evidência.</CardDescription>
+                <CardDescription>
+                  Eventos documentados desta evidência.
+                </CardDescription>
               </CardHeader>
+
               <CardContent>
                 <Timeline items={chainOfCustody} compact />
               </CardContent>

@@ -331,5 +331,5 @@ export const legalProofPillars = [
 ] as const;
 
 export function getRecordById(id: string) {
-  return records.find((record) => record.id === id) ?? records[0];
+  return records.find((record) => record.id === id);
 }
