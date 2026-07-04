@@ -1,17 +1,24 @@
 import { BadGatewayException, HttpException, Injectable } from '@nestjs/common';
 import {
   SERVICE_PORTS,
+  type AuthResponse,
+  type ChangePasswordRequest,
   type ContentRecordResponse,
   type CreateCreditPurchaseRequest,
   type CreateCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
+  type LoginUserRequest,
   type PurchaseCreditsRequest,
   type RegisterUserRequest,
   type ServiceName,
   type StartCaptureRequest,
+  type UpdateUserProfileRequest,
   type UserResponse,
 } from '@veridit/contracts';
+import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 export interface GatewayHealthResponse extends HealthResponse {
   downstream: Record<string, string>;
@@ -19,22 +26,31 @@ export interface GatewayHealthResponse extends HealthResponse {
 
 @Injectable()
 export class AppService {
+  login(body: LoginDto): Promise<{ mensagem: string; accessToken: string }> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/login',
+      body,
+    );
+  }
+
   private readonly urls = {
     identity:
       process.env.IDENTITY_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.identity}`,
+      `http://127.0.0.1:${SERVICE_PORTS.identity}`,
     billing:
       process.env.BILLING_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.billing}`,
+      `http://127.0.0.1:${SERVICE_PORTS.billing}`,
     capture:
       process.env.CAPTURE_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.capture}`,
+      `http://127.0.0.1:${SERVICE_PORTS.capture}`,
     notification:
       process.env.NOTIFICATION_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.notification}`,
+      `http://127.0.0.1:${SERVICE_PORTS.notification}`,
     report:
       process.env.REPORT_SERVICE_URL ??
-      `http://localhost:${SERVICE_PORTS.report}`,
+      `http://127.0.0.1:${SERVICE_PORTS.report}`,
   };
 
   getHealth(): GatewayHealthResponse {
@@ -59,6 +75,66 @@ export class AppService {
       'identity-service',
       this.urls.identity,
       '/users',
+      body,
+    );
+  }
+
+  getUser(id: string): Promise<UserResponse> {
+    return this.getFromService(
+      'identity-service',
+      this.urls.identity,
+      `/users/${id}`,
+    );
+  }
+
+  updateUser(
+    id: string,
+    body: UpdateUserProfileRequest,
+  ): Promise<UserResponse> {
+    return this.patchToService(
+      'identity-service',
+      this.urls.identity,
+      `/users/${id}`,
+      body,
+    );
+  }
+
+  changePassword(
+    id: string,
+    body: ChangePasswordRequest,
+  ): Promise<{ message: string }> {
+    return this.patchToService(
+      'identity-service',
+      this.urls.identity,
+      `/users/${id}/password`,
+      body,
+    );
+  }
+
+  loginUser(body: LoginUserRequest): Promise<AuthResponse> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/auth/login',
+      body,
+    );
+  }
+
+  // --- MÉTODOS DE RECUPERAÇÃO DE SENHA ---
+  forgotPassword(body: ForgotPasswordDto): Promise<{ message: string }> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/auth/forgot-password', // Repassa para a rota exata do identity
+      body,
+    );
+  }
+
+  resetPassword(body: ResetPasswordDto): Promise<{ message: string }> {
+    return this.postToService(
+      'identity-service',
+      this.urls.identity,
+      '/auth/reset-password', // Repassa para a rota exata do identity
       body,
     );
   }
@@ -148,6 +224,21 @@ export class AppService {
     );
   }
 
+  private patchToService<T>(
+    service: ServiceName,
+    baseUrl: string,
+    path: string,
+    body: object,
+  ): Promise<T> {
+    return this.request<T>(service, `${baseUrl}${path}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
   private async request<T>(
     service: ServiceName,
     url: string,
@@ -170,19 +261,18 @@ export class AppService {
           );
         }
 
-        throw new BadGatewayException({
-          service,
-          statusCode: response.status,
-          payload,
-        });
+        throw new HttpException(
+          {
+            service,
+            statusCode: response.status,
+            payload,
+          },
+          response.status,
+        );
       }
 
       return payload as T;
     } catch (error) {
-      if (error instanceof BadGatewayException) {
-        throw error;
-      }
-
       if (error instanceof HttpException) {
         throw error;
       }

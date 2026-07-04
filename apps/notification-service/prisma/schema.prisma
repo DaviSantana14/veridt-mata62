@@ -13,21 +13,28 @@ enum NotificationChannel {
 }
 
 enum NotificationStatus {
+  PENDING
+  SENT
   MOCK_SENT
   FAILED
 }
 
 model Notification {
-  id        String              @id @default(uuid())
-  recipient String
-  channel   NotificationChannel @default(EMAIL)
-  subject   String
-  body      String
-  eventName String
-  metadata  Json?
-  status    NotificationStatus  @default(MOCK_SENT)
-  createdAt DateTime            @default(now())
+  id                String              @id @default(uuid())
+  recipient         String
+  channel           NotificationChannel @default(EMAIL)
+  subject           String
+  body              String
+  eventName         String
+  metadata          Json?
+  status            NotificationStatus  @default(MOCK_SENT)
+  providerMessageId String?
+  sentAt            DateTime?
+  failedAt          DateTime?
+  errorMessage      String?
+  createdAt         DateTime            @default(now())
 
   @@index([recipient])
   @@index([eventName])
+  @@index([status])
 }
