@@ -10,6 +10,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { PaymentConfirmationClient } from "@/components/veridit/payment-confirmation-client";
+import {
+  PurchaseStepper,
+  purchaseSteps,
+} from "@/components/veridit/purchase-stepper";
 
 type PaymentConfirmationPageProps = {
   searchParams: Promise<{
@@ -30,34 +34,41 @@ export default async function PaymentConfirmationPage({
   return (
     <AppShell active="credits">
       <div className="mx-auto grid max-w-3xl gap-6">
-        <Card className="premium-card rounded-2xl">
-          <CardHeader>
-            <div className="flex size-12 items-center justify-center rounded-xl bg-[color:var(--success-soft)] text-[color:var(--success)]">
-              <CheckCircle2 aria-hidden="true" />
-            </div>
-            <CardTitle>Compra confirmada</CardTitle>
-            <CardDescription>
-              A confirmação foi registrada e os créditos foram adicionados.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-5">
-            <Alert className="border-[color:var(--success)]/30 bg-[color:var(--success-soft)]">
-              <CreditCard aria-hidden="true" />
-              <AlertTitle>Pagamento confirmado</AlertTitle>
-              <AlertDescription>
-                {formatConfirmationText(packageName, credits)}
-              </AlertDescription>
-            </Alert>
+        {/* Stepper — all steps completed (activeStep = 4 marks step 3 as completed) */}
+        <div className="reveal-up" style={{ animationDelay: "0ms" }}>
+          <PurchaseStepper steps={purchaseSteps} activeStep={4} />
+        </div>
 
-            {purchaseId ? (
-              <div className="rounded-xl border bg-background/80 p-4 text-sm text-muted-foreground">
-                Compra: <span className="font-mono">{purchaseId}</span>
+        <div className="reveal-up" style={{ animationDelay: "60ms" }}>
+          <Card className="premium-card rounded-2xl">
+            <CardHeader>
+              <div className="flex size-12 items-center justify-center rounded-xl bg-[color:var(--success-soft)] text-[color:var(--success)]">
+                <CheckCircle2 aria-hidden="true" />
               </div>
-            ) : null}
+              <CardTitle>Compra confirmada</CardTitle>
+              <CardDescription>
+                A confirmação foi registrada e os créditos foram adicionados.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-5">
+              <Alert className="border-[color:var(--success)]/30 bg-[color:var(--success-soft)]">
+                <CreditCard aria-hidden="true" />
+                <AlertTitle>Pagamento confirmado</AlertTitle>
+                <AlertDescription>
+                  {formatConfirmationText(packageName, credits)}
+                </AlertDescription>
+              </Alert>
 
-            <PaymentConfirmationClient />
-          </CardContent>
-        </Card>
+              {purchaseId ? (
+                <div className="rounded-xl border bg-background/80 p-4 text-sm text-muted-foreground">
+                  Compra: <span className="font-mono">{purchaseId}</span>
+                </div>
+              ) : null}
+
+              <PaymentConfirmationClient />
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AppShell>
   );

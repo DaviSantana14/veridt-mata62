@@ -1,12 +1,14 @@
-import { CreditCard, ShieldCheck, Sparkles } from "lucide-react";
+import { CreditCard, ShieldCheck, Sparkles, Zap } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreditBalanceText } from "@/components/veridit/credit-balance";
 import { PlanCard } from "@/components/veridit/plan-card";
-import { SectionHeader } from "@/components/veridit/section-header";
+import {
+  PurchaseStepper,
+  purchaseSteps,
+} from "@/components/veridit/purchase-stepper";
 import { getGatewayPlans } from "@/lib/gateway";
 import type { CreditPlan } from "@/lib/mock-data";
 import type { CreditPackageResponse } from "@veridit/contracts";
@@ -39,31 +41,74 @@ export default async function CreditsPage() {
   return (
     <AppShell active="credits">
       <div className="grid gap-8">
-        <SectionHeader
-          eyebrow="Créditos"
-          title="Escolha um pacote para manter o fluxo de evidências ativo."
-          description="Planos diretos para capturas avulsas, rotinas profissionais e operações com volume maior."
-          meta={
-            <Badge className="rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)]">
-              <CreditCard aria-hidden="true" />
-              Saldo atual: <CreditBalanceText />
-            </Badge>
-          }
-        />
+        {/* Stepper */}
+        <div className="reveal-up" style={{ animationDelay: "0ms" }}>
+          <PurchaseStepper steps={purchaseSteps} activeStep={1} />
+        </div>
 
-        <Alert className="border-primary/20 bg-primary/5">
-          <ShieldCheck aria-hidden="true" />
-          <AlertTitle>Compra segura com Mercado Pago</AlertTitle>
-          <AlertDescription>{gatewayStatus}</AlertDescription>
-        </Alert>
-
+        {/* Hero section */}
         <section
-          className="grid gap-6 lg:grid-cols-3"
-          aria-label="Pacotes de créditos"
+          className="credits-hero reveal-up"
+          style={{ animationDelay: "60ms" }}
         >
-          {renderedPlans.map((plan) => (
-            <PlanCard key={plan.id} plan={plan} />
-          ))}
+          <div className="credits-hero-content">
+            <div className="credits-hero-left">
+              <div className="credits-hero-eyebrow">
+                <Zap aria-hidden="true" />
+                Créditos
+              </div>
+              <h1 className="credits-hero-title">
+                Escolha o pacote ideal para suas evidências
+              </h1>
+              <p className="credits-hero-subtitle">
+                Planos diretos para capturas avulsas, rotinas profissionais e
+                operações com volume maior.
+              </p>
+            </div>
+            <div className="credits-hero-right">
+              <div className="credits-hero-balance-card">
+                <div className="credits-hero-balance-header">
+                  <Sparkles aria-hidden="true" />
+                  <span>Saldo atual</span>
+                </div>
+                <div className="credits-hero-balance-amount">
+                  <CreditBalanceText />
+                </div>
+                <p className="credits-hero-balance-note">
+                  disponíveis para novas capturas
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Security badge */}
+        <div
+          className="credits-security-bar reveal-up"
+          style={{ animationDelay: "120ms" }}
+        >
+          <ShieldCheck aria-hidden="true" />
+          <div>
+            <p className="credits-security-title">
+              Compra segura com Mercado Pago
+            </p>
+            <p className="credits-security-desc">{gatewayStatus}</p>
+          </div>
+        </div>
+
+        {/* Plan cards */}
+        <section aria-label="Pacotes de créditos">
+          <div className="grid gap-6 lg:grid-cols-3">
+            {renderedPlans.map((plan, i) => (
+              <div
+                key={plan.id}
+                className="reveal-up"
+                style={{ animationDelay: `${180 + i * 80}ms` }}
+              >
+                <PlanCard plan={plan} />
+              </div>
+            ))}
+          </div>
         </section>
 
         {!gatewayPlans.ok ? (
@@ -77,24 +122,27 @@ export default async function CreditsPage() {
           </Card>
         ) : null}
 
-        <Card className="premium-card rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles
-                className="text-[color:var(--gold)]"
-                aria-hidden="true"
-              />
-              Governança de consumo
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 text-sm text-muted-foreground md:grid-cols-3">
-            <p>1 crédito por captura concluída, seja vídeo ou screenshot.</p>
-            <p>
-              Relatório, hash e pacote ZIP permanecem vinculados ao registro.
-            </p>
-            <p>Pagamento por cartão ou Pix integrado ao Mercado Pago.</p>
-          </CardContent>
-        </Card>
+        {/* Governance section */}
+        <div className="reveal-up" style={{ animationDelay: "420ms" }}>
+          <Card className="premium-card rounded-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles
+                  className="text-[color:var(--gold)]"
+                  aria-hidden="true"
+                />
+                Governança de consumo
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 text-sm text-muted-foreground md:grid-cols-3">
+              <p>1 crédito por captura concluída, seja vídeo ou screenshot.</p>
+              <p>
+                Relatório, hash e pacote ZIP permanecem vinculados ao registro.
+              </p>
+              <p>Pagamento por cartão ou Pix integrado ao Mercado Pago.</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AppShell>
   );
