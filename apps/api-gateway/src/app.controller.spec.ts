@@ -23,11 +23,17 @@ describe('Api Gateway AppController billing purchases', () => {
   let controller: AppController;
   let appService: {
     createCreditPurchase: jest.Mock;
+    handleMercadoPagoWebhook: jest.Mock;
   };
 
   beforeEach(() => {
     appService = {
       createCreditPurchase: jest.fn().mockResolvedValue(purchaseResponse),
+      handleMercadoPagoWebhook: jest.fn().mockResolvedValue({
+        received: true,
+        processed: true,
+        status: 'PAID',
+      }),
     };
     controller = new AppController(appService as unknown as AppService);
   });
@@ -46,6 +52,29 @@ describe('Api Gateway AppController billing purchases', () => {
     expect(appService.createCreditPurchase).toHaveBeenCalledWith(
       purchaseBody,
       'key-1',
+    );
+  });
+
+  it('forwards Mercado Pago webhook payloads', async () => {
+    const body = { type: 'payment', data: { id: 'payment-1' } };
+    const headers = {
+      'x-signature': 'ts=1,v1=signature-1',
+      'x-request-id': 'request-1',
+    };
+    const query = { 'data.id': 'payment-1' };
+
+    await expect(
+      controller.handleMercadoPagoWebhook(body, headers, query),
+    ).resolves.toEqual({
+      received: true,
+      processed: true,
+      status: 'PAID',
+    });
+
+    expect(appService.handleMercadoPagoWebhook).toHaveBeenCalledWith(
+      body,
+      headers,
+      query,
     );
   });
 });

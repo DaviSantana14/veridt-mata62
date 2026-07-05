@@ -133,4 +133,51 @@ describe('Api Gateway AppService billing purchases', () => {
       service.createCreditPurchase(purchaseBody, 'key-1'),
     ).rejects.toBeInstanceOf(BadGatewayException);
   });
+
+  it('proxies Mercado Pago webhook payloads with signature headers', async () => {
+    const response = {
+      received: true,
+      processed: true,
+      status: 'PAID',
+    };
+    const body = {
+      type: 'payment',
+      data: {
+        id: 'payment-1',
+      },
+    };
+    const query = {
+      'data.id': 'payment-1',
+    };
+
+    fetchMock.mockResolvedValue(fetchResponse(200, response));
+
+    const result = await service.handleMercadoPagoWebhook(
+      body,
+      {
+        'x-signature': 'ts=1,v1=signature-1',
+        'x-request-id': 'request-1',
+        authorization: 'Bearer should-not-forward',
+      },
+      query,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3102/payments/mercado-pago/webhook',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-signature': 'ts=1,v1=signature-1',
+          'x-request-id': 'request-1',
+        },
+        body: JSON.stringify({
+          ...query,
+          ...body,
+          data: body.data,
+        }),
+      },
+    );
+    expect(result).toEqual(response);
+  });
 });

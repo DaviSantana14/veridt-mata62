@@ -180,6 +180,27 @@ export class AppService {
     );
   }
 
+  handleMercadoPagoWebhook(
+    body: Record<string, unknown>,
+    headers: Record<string, string | string[] | undefined>,
+    query: Record<string, unknown>,
+  ): Promise<{ received: boolean; processed: boolean; status?: string }> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      '/payments/mercado-pago/webhook',
+      {
+        ...query,
+        ...body,
+        data: body.data ?? query.data,
+      },
+      this.filterMercadoPagoWebhookHeaders(headers),
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
   getCaptureHealth(): Promise<HealthResponse> {
     return this.getFromService('capture-service', this.urls.capture, '/health');
   }
@@ -301,5 +322,21 @@ export class AppService {
     }
 
     return { payload };
+  }
+
+  private filterMercadoPagoWebhookHeaders(
+    headers: Record<string, string | string[] | undefined>,
+  ): Record<string, string> {
+    const forwardedHeaders: Record<string, string> = {};
+
+    for (const name of ['x-signature', 'x-request-id']) {
+      const value = headers[name];
+
+      if (typeof value === 'string' && value.trim()) {
+        forwardedHeaders[name] = value;
+      }
+    }
+
+    return forwardedHeaders;
   }
 }

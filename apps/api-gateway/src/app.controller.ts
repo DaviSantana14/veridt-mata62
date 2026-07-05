@@ -9,6 +9,7 @@ import {
   Post,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { LoginDto } from './dto/login.dto';
 import type {
@@ -125,6 +126,15 @@ export class AppController {
     }
 
     return this.appService.createCreditPurchase(body, idempotencyKey);
+  }
+
+  @Post('billing/payments/mercado-pago/webhook')
+  handleMercadoPagoWebhook(
+    @Body() body: Record<string, unknown>,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+    @Query() query: Record<string, unknown>,
+  ): Promise<{ received: boolean; processed: boolean; status?: string }> {
+    return this.appService.handleMercadoPagoWebhook(body, headers, query);
   }
 
   @Get('capture/health')
