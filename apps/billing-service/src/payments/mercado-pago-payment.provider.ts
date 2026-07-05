@@ -26,6 +26,21 @@ function optionalUrl(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
 }
 
+function getMercadoPagoEnvironment(): 'sandbox' | 'production' {
+  return process.env.MERCADO_PAGO_ENVIRONMENT === 'production'
+    ? 'production'
+    : 'sandbox';
+}
+
+function selectCheckoutUrl(response: {
+  init_point?: string;
+  sandbox_init_point?: string;
+}): string | undefined {
+  return getMercadoPagoEnvironment() === 'production'
+    ? response.init_point
+    : response.sandbox_init_point;
+}
+
 @Injectable()
 export class MercadoPagoPaymentProvider implements PaymentProvider {
   private clients?: MercadoPagoClients;
@@ -53,15 +68,15 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
         back_urls: {
           success: optionalUrl(
             'FRONTEND_SUCCESS_URL',
-            'http://localhost:3000/billing/success',
+            'http://localhost:3000/pagamento/retorno?status=success',
           ),
           failure: optionalUrl(
             'FRONTEND_FAILURE_URL',
-            'http://localhost:3000/billing/failure',
+            'http://localhost:3000/pagamento/retorno?status=failure',
           ),
           pending: optionalUrl(
             'FRONTEND_PENDING_URL',
-            'http://localhost:3000/billing/pending',
+            'http://localhost:3000/pagamento/retorno?status=pending',
           ),
         },
         auto_return: 'approved',
@@ -79,7 +94,7 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
     });
 
     const providerPreferenceId = response.id;
-    const checkoutUrl = response.init_point ?? response.sandbox_init_point;
+    const checkoutUrl = selectCheckoutUrl(response);
 
     if (!providerPreferenceId || !checkoutUrl) {
       throw new ServiceUnavailableException(
@@ -122,7 +137,7 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
     }
 
     const response = await preference.get({ preferenceId });
-    const checkoutUrl = response.init_point ?? response.sandbox_init_point;
+    const checkoutUrl = selectCheckoutUrl(response);
 
     if (!response.id || !checkoutUrl) {
       return null;
