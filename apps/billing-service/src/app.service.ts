@@ -5,17 +5,24 @@ import {
   Injectable,
 } from '@nestjs/common';
 import {
+  type CreateCardPaymentRequest,
+  type CreateCardPaymentResponse,
   type CreateCreditPurchaseResponse,
+  type CreateEmbeddedCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
   type PurchaseCreditsRequest,
+  type SimulatePaymentResponse,
 } from '@veridit/contracts';
 import {
   CreditPackageName,
   type CreditPurchase,
 } from './generated/prisma/client';
 import { BillingEventsPublisher } from './messaging/billing-events.publisher';
-import { PAYMENT_PROVIDER } from './payments/payment-provider.interface';
+import {
+  PAYMENT_PROVIDER,
+  type PaymentProvider,
+} from './payments/payment-provider.interface';
 import { verifyMercadoPagoWebhookSignature } from './payments/mercado-pago-webhook-signature';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -26,26 +33,6 @@ type PackageDefinition = CreditPackageResponse & {
 type CheckoutPreference = {
   providerPreferenceId: string;
   checkoutUrl: string;
-};
-
-type PaymentProviderPort = {
-  createCheckoutPreference(
-    input: PurchaseCreditsRequest & {
-      purchaseId: string;
-      idempotencyKey: string;
-      amountInCents: number;
-      credits: number;
-    },
-  ): Promise<CheckoutPreference>;
-  findCheckoutPreferenceByPurchaseId(
-    purchaseId: string,
-  ): Promise<CheckoutPreference | null>;
-  getPayment(paymentId: string): Promise<{
-    providerPaymentId: string;
-    status: string;
-    externalReference?: string;
-    approvedAt?: Date;
-  }>;
 };
 
 export type MockPurchaseResponse = PurchaseCreditsRequest & {
@@ -86,6 +73,7 @@ const PACKAGE_DEFINITIONS: Record<
   basic: {
     id: 'basic',
     name: 'basic',
+    displayName: 'Pacote Inicial',
     schemaName: CreditPackageName.BASIC,
     credits: 10,
     pricePerCreditInCents: 500,
@@ -94,6 +82,7 @@ const PACKAGE_DEFINITIONS: Record<
   medium: {
     id: 'medium',
     name: 'medium',
+    displayName: 'Pacote Profissional',
     schemaName: CreditPackageName.MEDIUM,
     credits: 30,
     pricePerCreditInCents: 450,
@@ -102,6 +91,7 @@ const PACKAGE_DEFINITIONS: Record<
   premium: {
     id: 'premium',
     name: 'premium',
+    displayName: 'Pacote Empresarial',
     schemaName: CreditPackageName.PREMIUM,
     credits: 80,
     pricePerCreditInCents: 400,
@@ -115,7 +105,7 @@ export class AppService {
     private readonly prisma: PrismaService,
     private readonly eventsPublisher: BillingEventsPublisher,
     @Inject(PAYMENT_PROVIDER)
-    private readonly paymentProvider: PaymentProviderPort,
+    private readonly paymentProvider: PaymentProvider,
   ) {}
 
   getHealth(): HealthResponse {
@@ -130,6 +120,7 @@ export class AppService {
     return Object.values(PACKAGE_DEFINITIONS).map((creditPackage) => ({
       id: creditPackage.id,
       name: creditPackage.name,
+      displayName: creditPackage.displayName,
       credits: creditPackage.credits,
       pricePerCreditInCents: creditPackage.pricePerCreditInCents,
       benefits: creditPackage.benefits,
@@ -250,6 +241,235 @@ export class AppService {
     }
 
     return this.createAndPersistCheckout(purchase, normalizedIdempotencyKey);
+  }
+
+  async createCardPurchase(
+    body: PurchaseCreditsRequest,
+    idempotencyKey: string,
+  ): Promise<CreateEmbeddedCreditPurchaseResponse> {
+    const normalizedIdempotencyKey =
+      this.normalizeIdempotencyKey(idempotencyKey);
+    const existingPurchase = await this.prisma.creditPurchase.findUnique({
+      where: {
+        idempotencyKey: normalizedIdempotencyKey,
+      },
+    });
+
+    if (existingPurchase) {
+      this.assertSameIdempotentPurchase(existingPurchase, body);
+      return this.toEmbeddedPurchaseResponse(existingPurchase);
+    }
+
+    const selectedPackage = PACKAGE_DEFINITIONS[body.packageName];
+    const amountInCents =
+      selectedPackage.credits * selectedPackage.pricePerCreditInCents;
+    const creditPackage = await this.upsertCreditPackage(selectedPackage);
+
+    try {
+      const purchase = await this.createPendingPurchase({
+        userId: body.userId,
+        packageId: creditPackage.id,
+        packageName: selectedPackage.schemaName,
+        credits: selectedPackage.credits,
+        amountInCents,
+        payerEmail: body.payerEmail,
+        idempotencyKey: normalizedIdempotencyKey,
+      });
+
+      return this.toEmbeddedPurchaseResponse(purchase);
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      const duplicatedPurchase = await this.prisma.creditPurchase.findUnique({
+        where: {
+          idempotencyKey: normalizedIdempotencyKey,
+        },
+      });
+
+      if (!duplicatedPurchase) {
+        throw error;
+      }
+
+      this.assertSameIdempotentPurchase(duplicatedPurchase, body);
+      return this.toEmbeddedPurchaseResponse(duplicatedPurchase);
+    }
+  }
+
+  async createMercadoPagoCardPayment(
+    purchaseId: string,
+    body: CreateCardPaymentRequest,
+    idempotencyKey: string,
+  ): Promise<CreateCardPaymentResponse> {
+    const normalizedIdempotencyKey =
+      this.normalizeIdempotencyKey(idempotencyKey);
+    const purchase = await this.prisma.creditPurchase.findUnique({
+      where: {
+        id: purchaseId,
+      },
+    });
+
+    if (!purchase) {
+      throw new BadRequestException('Credit purchase not found');
+    }
+
+    if (purchase.payerEmail !== body.payer.email) {
+      throw new BadRequestException(
+        'Payment payer email must match the purchase payer email',
+      );
+    }
+
+    this.assertSupportedEmbeddedPaymentPayload(body);
+
+    if (purchase.status === 'PAID') {
+      return {
+        purchaseId: purchase.id,
+        status: 'PAID',
+        providerPaymentId: purchase.providerPaymentId ?? undefined,
+      };
+    }
+
+    if (purchase.status === 'CANCELED') {
+      throw new ConflictException('Credit purchase was canceled');
+    }
+
+    if (purchase.providerPaymentId) {
+      return {
+        purchaseId: purchase.id,
+        status: 'PENDING',
+        providerPaymentId: purchase.providerPaymentId,
+      };
+    }
+
+    const payment = await this.paymentProvider.createCardPayment({
+      ...body,
+      purchaseId: purchase.id,
+      idempotencyKey: this.toCardPaymentIdempotencyKey(purchase.id),
+      userId: purchase.userId,
+      packageName: this.toContractPackageName(purchase.packageName),
+      amountInCents: purchase.amountInCents,
+      credits: purchase.credits,
+      payerEmail: purchase.payerEmail,
+      payer: {
+        email: purchase.payerEmail,
+        identification: body.payer.identification,
+      },
+    });
+
+    if (payment.status === 'approved') {
+      const confirmed = await this.confirmApprovedPayment(
+        purchase.id,
+        payment.providerPaymentId,
+        payment.approvedAt,
+      );
+
+      if (confirmed) {
+        this.eventsPublisher.publishCreditPurchased({
+          purchaseId: confirmed.id,
+          userId: confirmed.userId,
+          packageName: this.toContractPackageName(confirmed.packageName),
+          credits: confirmed.credits,
+          payerEmail: confirmed.payerEmail,
+          occurredAt: (confirmed.paidAt ?? new Date()).toISOString(),
+        });
+      }
+
+      return {
+        purchaseId: purchase.id,
+        status: 'PAID',
+        providerPaymentId: payment.providerPaymentId,
+        pix: payment.pix,
+      };
+    }
+
+    if (this.isCanceledPaymentStatus(payment.status)) {
+      await this.prisma.creditPurchase.updateMany({
+        where: {
+          id: purchase.id,
+          status: 'PENDING',
+        },
+        data: {
+          status: 'CANCELED',
+          providerPaymentId: payment.providerPaymentId,
+          canceledAt: new Date(),
+        },
+      });
+
+      return {
+        purchaseId: purchase.id,
+        status: 'CANCELED',
+        providerPaymentId: payment.providerPaymentId,
+        pix: payment.pix,
+      };
+    }
+
+    await this.prisma.creditPurchase.updateMany({
+      where: {
+        id: purchase.id,
+        status: 'PENDING',
+      },
+      data: {
+        providerPaymentId: payment.providerPaymentId,
+      },
+    });
+
+    return {
+      purchaseId: purchase.id,
+      status: 'PENDING',
+      providerPaymentId: payment.providerPaymentId,
+      pix: payment.pix,
+    };
+  }
+
+  async simulatePayment(purchaseId: string): Promise<SimulatePaymentResponse> {
+    const purchase = await this.prisma.creditPurchase.findUnique({
+      where: {
+        id: purchaseId,
+      },
+    });
+
+    if (!purchase) {
+      throw new BadRequestException('Credit purchase not found');
+    }
+
+    if (purchase.status === 'CANCELED') {
+      throw new ConflictException('Credit purchase was canceled');
+    }
+
+    if (purchase.status === 'PAID') {
+      return this.toSimulatePaymentResponse(purchase);
+    }
+
+    const providerPaymentId =
+      purchase.providerPaymentId ?? `sandbox-simulation-${purchase.id}`;
+    const confirmed = await this.confirmApprovedPayment(
+      purchase.id,
+      providerPaymentId,
+      new Date(),
+    );
+
+    if (confirmed) {
+      this.eventsPublisher.publishCreditPurchased({
+        purchaseId: confirmed.id,
+        userId: confirmed.userId,
+        packageName: this.toContractPackageName(confirmed.packageName),
+        credits: confirmed.credits,
+        payerEmail: confirmed.payerEmail,
+        occurredAt: (confirmed.paidAt ?? new Date()).toISOString(),
+      });
+
+      return this.toSimulatePaymentResponse(confirmed);
+    }
+
+    const alreadyUpdatedPurchase =
+      await this.prisma.creditPurchase.findUniqueOrThrow({
+        where: {
+          id: purchase.id,
+        },
+      });
+
+    return this.toSimulatePaymentResponse(alreadyUpdatedPurchase);
   }
 
   async handleMercadoPagoWebhook(
@@ -417,6 +637,44 @@ export class AppService {
     );
   }
 
+  private toEmbeddedPurchaseResponse(
+    purchase: CreditPurchase,
+  ): CreateEmbeddedCreditPurchaseResponse {
+    const packageName = this.toContractPackageName(purchase.packageName);
+    const selectedPackage = PACKAGE_DEFINITIONS[packageName];
+
+    if (purchase.status !== 'PENDING') {
+      throw new ConflictException(
+        'This idempotency key cannot be reused. Start a new payment with a new Idempotency-Key.',
+      );
+    }
+
+    return {
+      purchaseId: purchase.id,
+      amountInCents: purchase.amountInCents,
+      credits: purchase.credits,
+      packageName,
+      packageDisplayName: selectedPackage.displayName,
+      pricePerCreditInCents: selectedPackage.pricePerCreditInCents,
+      payerEmail: purchase.payerEmail,
+    };
+  }
+
+  private toSimulatePaymentResponse(
+    purchase: CreditPurchase,
+  ): SimulatePaymentResponse {
+    const packageName = this.toContractPackageName(purchase.packageName);
+    const selectedPackage = PACKAGE_DEFINITIONS[packageName];
+
+    return {
+      purchaseId: purchase.id,
+      status: purchase.status,
+      credits: purchase.credits,
+      packageName,
+      packageDisplayName: selectedPackage.displayName,
+    };
+  }
+
   private normalizeIdempotencyKey(idempotencyKey: string): string {
     const normalizedIdempotencyKey = idempotencyKey.trim();
 
@@ -425,6 +683,24 @@ export class AppService {
     }
 
     return normalizedIdempotencyKey;
+  }
+
+  private toCardPaymentIdempotencyKey(purchaseId: string): string {
+    return `card-payment-${purchaseId}`;
+  }
+
+  private assertSupportedEmbeddedPaymentPayload(
+    body: CreateCardPaymentRequest,
+  ): void {
+    if (body.paymentMethodId === 'pix') {
+      return;
+    }
+
+    if (!body.token || !body.installments) {
+      throw new BadRequestException(
+        'Card payments require token and installments',
+      );
+    }
   }
 
   private async createAndPersistCheckout(

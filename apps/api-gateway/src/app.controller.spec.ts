@@ -1,7 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import type {
+  CreateCardPaymentRequest,
+  CreateCardPaymentResponse,
   CreateCreditPurchaseRequest,
   CreateCreditPurchaseResponse,
+  CreateEmbeddedCreditPurchaseResponse,
+  SimulatePaymentResponse,
 } from '@veridit/contracts';
 import { AppController } from './app.controller';
 import type { AppService } from './app.service';
@@ -19,16 +23,62 @@ const purchaseResponse: CreateCreditPurchaseResponse = {
   providerPreferenceId: 'preference-1',
 };
 
+const embeddedPurchaseResponse: CreateEmbeddedCreditPurchaseResponse = {
+  purchaseId: 'purchase-1',
+  amountInCents: 5000,
+  credits: 10,
+  packageName: 'basic',
+  packageDisplayName: 'Pacote Inicial',
+  pricePerCreditInCents: 500,
+  payerEmail: 'payer@example.com',
+};
+
+const cardPaymentBody: CreateCardPaymentRequest = {
+  token: 'card-token-1',
+  installments: 1,
+  paymentMethodId: 'visa',
+  issuerId: '25',
+  payer: {
+    email: 'payer@example.com',
+    identification: {
+      type: 'CPF',
+      number: '12345678909',
+    },
+  },
+};
+
+const cardPaymentResponse: CreateCardPaymentResponse = {
+  purchaseId: 'purchase-1',
+  status: 'PAID',
+  providerPaymentId: 'payment-1',
+};
+
+const simulatePaymentResponse: SimulatePaymentResponse = {
+  purchaseId: 'purchase-1',
+  status: 'PAID',
+  credits: 10,
+  packageName: 'basic',
+  packageDisplayName: 'Pacote Inicial',
+};
+
 describe('Api Gateway AppController billing purchases', () => {
   let controller: AppController;
   let appService: {
     createCreditPurchase: jest.Mock;
+    createCardPurchase: jest.Mock;
+    createMercadoPagoCardPayment: jest.Mock;
+    simulatePayment: jest.Mock;
     handleMercadoPagoWebhook: jest.Mock;
   };
 
   beforeEach(() => {
     appService = {
       createCreditPurchase: jest.fn().mockResolvedValue(purchaseResponse),
+      createCardPurchase: jest.fn().mockResolvedValue(embeddedPurchaseResponse),
+      createMercadoPagoCardPayment: jest
+        .fn()
+        .mockResolvedValue(cardPaymentResponse),
+      simulatePayment: jest.fn().mockResolvedValue(simulatePaymentResponse),
       handleMercadoPagoWebhook: jest.fn().mockResolvedValue({
         received: true,
         processed: true,
@@ -53,6 +103,57 @@ describe('Api Gateway AppController billing purchases', () => {
       purchaseBody,
       'key-1',
     );
+  });
+
+  it('passes embedded card purchase requests to the service', async () => {
+    await expect(
+      controller.createCardPurchase(purchaseBody, 'key-1'),
+    ).resolves.toEqual(embeddedPurchaseResponse);
+
+    expect(appService.createCardPurchase).toHaveBeenCalledWith(
+      purchaseBody,
+      'key-1',
+    );
+  });
+
+  it('rejects embedded card purchases without idempotency key headers', () => {
+    expect(() =>
+      controller.createCardPurchase(purchaseBody, undefined),
+    ).toThrow(BadRequestException);
+  });
+
+  it('passes embedded Mercado Pago card payment requests to the service', async () => {
+    await expect(
+      controller.createMercadoPagoCardPayment(
+        'purchase-1',
+        cardPaymentBody,
+        'payment-key-1',
+      ),
+    ).resolves.toEqual(cardPaymentResponse);
+
+    expect(appService.createMercadoPagoCardPayment).toHaveBeenCalledWith(
+      'purchase-1',
+      cardPaymentBody,
+      'payment-key-1',
+    );
+  });
+
+  it('rejects embedded Mercado Pago card payments without idempotency key headers', () => {
+    expect(() =>
+      controller.createMercadoPagoCardPayment(
+        'purchase-1',
+        cardPaymentBody,
+        undefined,
+      ),
+    ).toThrow(BadRequestException);
+  });
+
+  it('passes simulated payment requests to the service', async () => {
+    await expect(controller.simulatePayment('purchase-1')).resolves.toEqual(
+      simulatePaymentResponse,
+    );
+
+    expect(appService.simulatePayment).toHaveBeenCalledWith('purchase-1');
   });
 
   it('forwards Mercado Pago webhook payloads', async () => {

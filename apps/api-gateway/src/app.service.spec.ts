@@ -1,7 +1,11 @@
 import { BadGatewayException, HttpException } from '@nestjs/common';
 import type {
+  CreateCardPaymentRequest,
+  CreateCardPaymentResponse,
   CreateCreditPurchaseRequest,
   CreateCreditPurchaseResponse,
+  CreateEmbeddedCreditPurchaseResponse,
+  SimulatePaymentResponse,
 } from '@veridit/contracts';
 import { AppService } from './app.service';
 
@@ -16,6 +20,44 @@ const purchaseResponse: CreateCreditPurchaseResponse = {
   status: 'PENDING',
   checkoutUrl: 'https://mercadopago.test/checkout',
   providerPreferenceId: 'preference-1',
+};
+
+const embeddedPurchaseResponse: CreateEmbeddedCreditPurchaseResponse = {
+  purchaseId: 'purchase-1',
+  amountInCents: 5000,
+  credits: 10,
+  packageName: 'basic',
+  packageDisplayName: 'Pacote Inicial',
+  pricePerCreditInCents: 500,
+  payerEmail: 'payer@example.com',
+};
+
+const cardPaymentBody: CreateCardPaymentRequest = {
+  token: 'card-token-1',
+  installments: 1,
+  paymentMethodId: 'visa',
+  issuerId: '25',
+  payer: {
+    email: 'payer@example.com',
+    identification: {
+      type: 'CPF',
+      number: '12345678909',
+    },
+  },
+};
+
+const cardPaymentResponse: CreateCardPaymentResponse = {
+  purchaseId: 'purchase-1',
+  status: 'PAID',
+  providerPaymentId: 'payment-1',
+};
+
+const simulatePaymentResponse: SimulatePaymentResponse = {
+  purchaseId: 'purchase-1',
+  status: 'PAID',
+  credits: 10,
+  packageName: 'basic',
+  packageDisplayName: 'Pacote Inicial',
 };
 
 function fetchResponse(status: number, payload: unknown): Response {
@@ -72,6 +114,66 @@ describe('Api Gateway AppService billing purchases', () => {
       body: JSON.stringify(purchaseBody),
     });
     expect(result).toEqual(purchaseResponse);
+  });
+
+  it('forwards embedded card purchases with the idempotency key header', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(200, embeddedPurchaseResponse));
+
+    const result = await service.createCardPurchase(purchaseBody, 'key-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3102/purchases/card',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'key-1',
+        },
+        body: JSON.stringify(purchaseBody),
+      },
+    );
+    expect(result).toEqual(embeddedPurchaseResponse);
+  });
+
+  it('forwards embedded card payment submissions with the idempotency key header', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(200, cardPaymentResponse));
+
+    const result = await service.createMercadoPagoCardPayment(
+      'purchase-1',
+      cardPaymentBody,
+      'payment-key-1',
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3102/purchases/purchase-1/mercado-pago/card-payment',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': 'payment-key-1',
+        },
+        body: JSON.stringify(cardPaymentBody),
+      },
+    );
+    expect(result).toEqual(cardPaymentResponse);
+  });
+
+  it('forwards simulated payment confirmations to billing', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(200, simulatePaymentResponse));
+
+    const result = await service.simulatePayment('purchase-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3102/purchases/purchase-1/simulate-payment',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+    );
+    expect(result).toEqual(simulatePaymentResponse);
   });
 
   it('preserves billing 400 responses as HttpException', async () => {

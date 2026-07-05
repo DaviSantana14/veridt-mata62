@@ -26,6 +26,28 @@ const checkout = {
   checkoutUrl: 'https://mercadopago.test/checkout',
 };
 
+const cardPaymentBody = {
+  token: 'card-token-1',
+  installments: 1,
+  paymentMethodId: 'visa',
+  issuerId: '25',
+  payer: {
+    email: 'payer@example.com',
+    identification: {
+      type: 'CPF',
+      number: '12345678909',
+    },
+  },
+};
+
+const pixPaymentBody = {
+  paymentMethodId: 'pix',
+  selectedPaymentMethod: 'pix',
+  payer: {
+    email: 'payer@example.com',
+  },
+};
+
 function createPrismaMock() {
   return {
     creditPackage: {
@@ -48,6 +70,7 @@ function createPrismaMock() {
 function createPaymentProviderMock() {
   return {
     createCheckoutPreference: jest.fn(),
+    createCardPayment: jest.fn(),
     findCheckoutPreferenceByPurchaseId: jest.fn(),
     getPayment: jest.fn(),
   };
@@ -165,6 +188,357 @@ describe('AppService Mercado Pago billing flow', () => {
       status: 'PENDING',
       checkoutUrl: checkout.checkoutUrl,
       providerPreferenceId: checkout.providerPreferenceId,
+    });
+  });
+
+  it('returns credit packages with backend display names', () => {
+    expect(service.getPackages()).toEqual([
+      {
+        id: 'basic',
+        name: 'basic',
+        displayName: 'Pacote Inicial',
+        credits: 10,
+        pricePerCreditInCents: 500,
+        benefits: 'Pacote inicial para registros pontuais.',
+      },
+      {
+        id: 'medium',
+        name: 'medium',
+        displayName: 'Pacote Profissional',
+        credits: 30,
+        pricePerCreditInCents: 450,
+        benefits: 'Pacote intermediario para uso recorrente.',
+      },
+      {
+        id: 'premium',
+        name: 'premium',
+        displayName: 'Pacote Empresarial',
+        credits: 80,
+        pricePerCreditInCents: 400,
+        benefits: 'Pacote premium para alto volume de registros.',
+      },
+    ]);
+  });
+
+  it('creates an embedded card purchase without checkout preference', async () => {
+    const purchase = makePurchase();
+
+    prisma.creditPurchase.findUnique.mockResolvedValue(null);
+    prisma.creditPurchase.create.mockResolvedValue(purchase);
+
+    const result = await service.createCardPurchase(purchaseBody, ' key-1 ');
+
+    expect(prisma.creditPurchase.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'user-1',
+        packageId: 'package-basic',
+        packageName: CreditPackageName.BASIC,
+        credits: 10,
+        amountInCents: 5000,
+        payerEmail: 'payer@example.com',
+        idempotencyKey: 'key-1',
+        status: 'PENDING',
+      },
+    });
+    expect(paymentProvider.createCheckoutPreference).not.toHaveBeenCalled();
+    expect(prisma.userCreditBalance.upsert).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      purchaseId: purchase.id,
+      amountInCents: 5000,
+      credits: 10,
+      packageName: 'basic',
+      packageDisplayName: 'Pacote Inicial',
+      pricePerCreditInCents: 500,
+      payerEmail: 'payer@example.com',
+    });
+  });
+
+  it('processes approved embedded card payment and credits once', async () => {
+    const approvedAt = new Date('2026-05-29T12:30:00.000Z');
+    const paidPurchase = makePurchase({
+      status: 'PAID',
+      paidAt: approvedAt,
+    });
+
+    prisma.creditPurchase.findUnique.mockResolvedValue(makePurchase());
+    paymentProvider.createCardPayment.mockResolvedValue({
+      providerPaymentId: 'payment-1',
+      status: 'approved',
+      externalReference: 'purchase-1',
+      approvedAt,
+    });
+    prisma.creditPurchase.updateMany.mockResolvedValue({
+      count: 1,
+    });
+    prisma.creditPurchase.findUniqueOrThrow.mockResolvedValue(paidPurchase);
+
+    const result = await service.createMercadoPagoCardPayment(
+      'purchase-1',
+      cardPaymentBody,
+      'payment-key-1',
+    );
+
+    expect(paymentProvider.createCardPayment).toHaveBeenCalledWith({
+      ...cardPaymentBody,
+      purchaseId: 'purchase-1',
+      idempotencyKey: 'card-payment-purchase-1',
+      userId: 'user-1',
+      packageName: 'basic',
+      amountInCents: 5000,
+      credits: 10,
+      payerEmail: 'payer@example.com',
+      payer: cardPaymentBody.payer,
+    });
+    expect(prisma.userCreditBalance.upsert).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+      },
+      create: {
+        userId: 'user-1',
+        credits: 10,
+      },
+      update: {
+        credits: {
+          increment: 10,
+        },
+      },
+    });
+    expect(eventsPublisher.publishCreditPurchased).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      purchaseId: 'purchase-1',
+      status: 'PAID',
+      providerPaymentId: 'payment-1',
+    });
+  });
+
+  it('keeps embedded card purchase pending when payment is pending', async () => {
+    prisma.creditPurchase.findUnique.mockResolvedValue(makePurchase());
+    paymentProvider.createCardPayment.mockResolvedValue({
+      providerPaymentId: 'payment-1',
+      status: 'pending',
+      externalReference: 'purchase-1',
+    });
+    prisma.creditPurchase.updateMany.mockResolvedValue({
+      count: 1,
+    });
+
+    const result = await service.createMercadoPagoCardPayment(
+      'purchase-1',
+      cardPaymentBody,
+      'payment-key-1',
+    );
+
+    expect(prisma.userCreditBalance.upsert).not.toHaveBeenCalled();
+    expect(eventsPublisher.publishCreditPurchased).not.toHaveBeenCalled();
+    expect(prisma.creditPurchase.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'purchase-1',
+        status: 'PENDING',
+      },
+      data: {
+        providerPaymentId: 'payment-1',
+      },
+    });
+    expect(result).toEqual({
+      purchaseId: 'purchase-1',
+      status: 'PENDING',
+      providerPaymentId: 'payment-1',
+    });
+  });
+
+  it('creates pending Pix payment without card token or installments', async () => {
+    prisma.creditPurchase.findUnique.mockResolvedValue(makePurchase());
+    paymentProvider.createCardPayment.mockResolvedValue({
+      providerPaymentId: 'payment-pix-1',
+      status: 'pending',
+      externalReference: 'purchase-1',
+      pix: {
+        qrCode: 'pix-copy-paste-code',
+        qrCodeBase64: 'base64-qr-code',
+        ticketUrl: 'https://mercadopago.test/pix/payment-pix-1',
+      },
+    });
+    prisma.creditPurchase.updateMany.mockResolvedValue({
+      count: 1,
+    });
+
+    const result = await service.createMercadoPagoCardPayment(
+      'purchase-1',
+      pixPaymentBody,
+      'payment-key-1',
+    );
+
+    expect(paymentProvider.createCardPayment).toHaveBeenCalledWith({
+      ...pixPaymentBody,
+      purchaseId: 'purchase-1',
+      idempotencyKey: 'card-payment-purchase-1',
+      userId: 'user-1',
+      packageName: 'basic',
+      amountInCents: 5000,
+      credits: 10,
+      payerEmail: 'payer@example.com',
+      payer: pixPaymentBody.payer,
+    });
+    expect(prisma.userCreditBalance.upsert).not.toHaveBeenCalled();
+    expect(eventsPublisher.publishCreditPurchased).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      purchaseId: 'purchase-1',
+      status: 'PENDING',
+      providerPaymentId: 'payment-pix-1',
+      pix: {
+        qrCode: 'pix-copy-paste-code',
+        qrCodeBase64: 'base64-qr-code',
+        ticketUrl: 'https://mercadopago.test/pix/payment-pix-1',
+      },
+    });
+  });
+
+  it('simulates a pending payment and credits once', async () => {
+    const paidPurchase = makePurchase({
+      status: 'PAID',
+      providerPaymentId: 'sandbox-simulation-purchase-1',
+      paidAt: new Date('2026-05-29T12:30:00.000Z'),
+    });
+
+    prisma.creditPurchase.findUnique.mockResolvedValue(makePurchase());
+    prisma.creditPurchase.updateMany.mockResolvedValue({
+      count: 1,
+    });
+    prisma.creditPurchase.findUniqueOrThrow.mockResolvedValue(paidPurchase);
+
+    const result = await service.simulatePayment('purchase-1');
+
+    expect(prisma.creditPurchase.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'purchase-1',
+        status: 'PENDING',
+      },
+      data: {
+        status: 'PAID',
+        providerPaymentId: 'sandbox-simulation-purchase-1',
+        paidAt: expect.any(Date) as Date,
+      },
+    });
+    expect(prisma.userCreditBalance.upsert).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+      },
+      create: {
+        userId: 'user-1',
+        credits: 10,
+      },
+      update: {
+        credits: {
+          increment: 10,
+        },
+      },
+    });
+    expect(eventsPublisher.publishCreditPurchased).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      purchaseId: 'purchase-1',
+      status: 'PAID',
+      credits: 10,
+      packageName: 'basic',
+      packageDisplayName: 'Pacote Inicial',
+    });
+  });
+
+  it('returns paid simulated purchases without duplicating credits', async () => {
+    prisma.creditPurchase.findUnique.mockResolvedValue(
+      makePurchase({
+        status: 'PAID',
+        providerPaymentId: 'sandbox-simulation-purchase-1',
+      }),
+    );
+
+    const result = await service.simulatePayment('purchase-1');
+
+    expect(prisma.creditPurchase.updateMany).not.toHaveBeenCalled();
+    expect(prisma.userCreditBalance.upsert).not.toHaveBeenCalled();
+    expect(eventsPublisher.publishCreditPurchased).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      purchaseId: 'purchase-1',
+      status: 'PAID',
+      credits: 10,
+      packageName: 'basic',
+      packageDisplayName: 'Pacote Inicial',
+    });
+  });
+
+  it('rejects simulation for canceled purchases', async () => {
+    prisma.creditPurchase.findUnique.mockResolvedValue(
+      makePurchase({
+        status: 'CANCELED',
+      }),
+    );
+
+    await expect(service.simulatePayment('purchase-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(prisma.userCreditBalance.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects simulation for missing purchases', async () => {
+    prisma.creditPurchase.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.simulatePayment('missing-purchase'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.userCreditBalance.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects card payment submissions without token or installments', async () => {
+    prisma.creditPurchase.findUnique.mockResolvedValue(makePurchase());
+
+    await expect(
+      service.createMercadoPagoCardPayment(
+        'purchase-1',
+        {
+          paymentMethodId: 'visa',
+          payer: {
+            email: 'payer@example.com',
+          },
+        },
+        'payment-key-1',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(paymentProvider.createCardPayment).not.toHaveBeenCalled();
+  });
+
+  it('cancels embedded card purchase when payment is rejected', async () => {
+    prisma.creditPurchase.findUnique.mockResolvedValue(makePurchase());
+    paymentProvider.createCardPayment.mockResolvedValue({
+      providerPaymentId: 'payment-1',
+      status: 'rejected',
+      externalReference: 'purchase-1',
+    });
+    prisma.creditPurchase.updateMany.mockResolvedValue({
+      count: 1,
+    });
+
+    const result = await service.createMercadoPagoCardPayment(
+      'purchase-1',
+      cardPaymentBody,
+      'payment-key-1',
+    );
+
+    expect(prisma.userCreditBalance.upsert).not.toHaveBeenCalled();
+    expect(eventsPublisher.publishCreditPurchased).not.toHaveBeenCalled();
+    expect(prisma.creditPurchase.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'purchase-1',
+        status: 'PENDING',
+      },
+      data: {
+        status: 'CANCELED',
+        providerPaymentId: 'payment-1',
+        canceledAt: expect.any(Date) as Date,
+      },
+    });
+    expect(result).toEqual({
+      purchaseId: 'purchase-1',
+      status: 'CANCELED',
+      providerPaymentId: 'payment-1',
     });
   });
 
@@ -563,9 +937,7 @@ function signMercadoPagoWebhook({
   secret: string;
 }): string {
   const manifest = `id:${dataId};request-id:${requestId};ts:${timestamp};`;
-  const signature = createHmac('sha256', secret)
-    .update(manifest)
-    .digest('hex');
+  const signature = createHmac('sha256', secret).update(manifest).digest('hex');
 
   return `ts=${timestamp},v1=${signature}`;
 }

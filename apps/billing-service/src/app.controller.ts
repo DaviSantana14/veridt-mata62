@@ -4,13 +4,17 @@ import {
   Controller,
   Get,
   Headers,
+  Param,
   Post,
   Query,
 } from '@nestjs/common';
 import type {
+  CreateCardPaymentResponse,
   CreateCreditPurchaseResponse,
+  CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
   HealthResponse,
+  SimulatePaymentResponse,
 } from '@veridit/contracts';
 import { AppService } from './app.service';
 import type {
@@ -18,6 +22,7 @@ import type {
   MercadoPagoWebhookResponse,
   MockPurchaseResponse,
 } from './app.service';
+import { CreateCardPaymentDto } from './dto/create-card-payment.dto';
 import { CreateCreditPurchaseDto } from './dto/create-credit-purchase.dto';
 import { MockPurchaseDto } from './dto/mock-purchase.dto';
 
@@ -52,6 +57,42 @@ export class AppController {
     }
 
     return this.appService.createCreditPurchase(body, idempotencyKey);
+  }
+
+  @Post('purchases/card')
+  createCardPurchase(
+    @Body() body: CreateCreditPurchaseDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ): Promise<CreateEmbeddedCreditPurchaseResponse> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return this.appService.createCardPurchase(body, idempotencyKey);
+  }
+
+  @Post('purchases/:purchaseId/mercado-pago/card-payment')
+  createMercadoPagoCardPayment(
+    @Param('purchaseId') purchaseId: string,
+    @Body() body: CreateCardPaymentDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ): Promise<CreateCardPaymentResponse> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return this.appService.createMercadoPagoCardPayment(
+      purchaseId,
+      body,
+      idempotencyKey,
+    );
+  }
+
+  @Post('purchases/:purchaseId/simulate-payment')
+  simulatePayment(
+    @Param('purchaseId') purchaseId: string,
+  ): Promise<SimulatePaymentResponse> {
+    return this.appService.simulatePayment(purchaseId);
   }
 
   @Post('payments/mercado-pago/webhook')

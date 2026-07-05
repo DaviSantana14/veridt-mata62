@@ -1,4 +1,8 @@
-import type { CreateCreditPurchaseRequest } from '@veridit/contracts';
+import type {
+  CardPaymentPayerIdentification,
+  CreateCardPaymentRequest,
+  CreateCreditPurchaseRequest,
+} from '@veridit/contracts';
 
 export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
 
@@ -19,6 +23,25 @@ export type ProviderPayment = {
   status: string;
   externalReference?: string;
   approvedAt?: Date;
+  pix?: {
+    qrCode?: string;
+    qrCodeBase64?: string;
+    ticketUrl?: string;
+  };
+};
+
+export type CreateCardPaymentInput = CreateCardPaymentRequest & {
+  purchaseId: string;
+  userId: string;
+  packageName: CreateCreditPurchaseRequest['packageName'];
+  amountInCents: number;
+  credits: number;
+  payerEmail: string;
+  payer: {
+    email: string;
+    identification?: CardPaymentPayerIdentification;
+  };
+  idempotencyKey: string;
 };
 
 export interface PaymentProvider {
@@ -29,6 +52,8 @@ export interface PaymentProvider {
   findCheckoutPreferenceByPurchaseId(
     purchaseId: string,
   ): Promise<CreateCheckoutPreferenceResult | null>;
+
+  createCardPayment(input: CreateCardPaymentInput): Promise<ProviderPayment>;
 
   getPayment(paymentId: string): Promise<ProviderPayment>;
 }

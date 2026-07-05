@@ -1,6 +1,7 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
 import type {
+  CreateCardPaymentInput,
   CreateCheckoutPreferenceInput,
   CreateCheckoutPreferenceResult,
   PaymentProvider,
@@ -134,6 +135,56 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
     };
   }
 
+  async createCardPayment(
+    input: CreateCardPaymentInput,
+  ): Promise<ProviderPayment> {
+    const { payment } = this.getClients();
+    const cardFields =
+      input.paymentMethodId === 'pix'
+        ? {}
+        : {
+            token: input.token,
+            installments: input.installments,
+            issuer_id: parseOptionalNumber(input.issuerId),
+          };
+    const response = await payment.create({
+      body: {
+        transaction_amount: input.amountInCents / 100,
+        description: `Pacote ${input.packageName} Veridit`,
+        payment_method_id: input.paymentMethodId,
+        ...cardFields,
+        payer: {
+          email: input.payerEmail,
+          identification: input.payer.identification,
+        },
+        external_reference: input.purchaseId,
+        notification_url: requireEnv('MERCADO_PAGO_WEBHOOK_URL'),
+        metadata: {
+          purchaseId: input.purchaseId,
+          userId: input.userId,
+          credits: input.credits,
+        },
+      },
+      requestOptions: {
+        idempotencyKey: input.idempotencyKey,
+      },
+    });
+
+    if (!response.id) {
+      throw new ServiceUnavailableException(
+        'Mercado Pago did not return a payment id',
+      );
+    }
+
+    return {
+      providerPaymentId: String(response.id),
+      status: response.status ?? 'unknown',
+      externalReference: response.external_reference ?? input.purchaseId,
+      approvedAt: parseMercadoPagoDate(response),
+      pix: parsePixTransactionData(response),
+    };
+  }
+
   async findCheckoutPreferenceByPurchaseId(
     purchaseId: string,
   ): Promise<CreateCheckoutPreferenceResult | null> {
@@ -191,4 +242,39 @@ function parseMercadoPagoDate(response: {
 
   const date = new Date(response.date_approved);
   return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function parseOptionalNumber(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parsePixTransactionData(response: {
+  point_of_interaction?: {
+    transaction_data?: {
+      qr_code?: string;
+      qr_code_base64?: string;
+      ticket_url?: string;
+    };
+  };
+}): ProviderPayment['pix'] | undefined {
+  const transactionData = response.point_of_interaction?.transaction_data;
+
+  if (
+    !transactionData?.qr_code &&
+    !transactionData?.qr_code_base64 &&
+    !transactionData?.ticket_url
+  ) {
+    return undefined;
+  }
+
+  return {
+    qrCode: transactionData.qr_code,
+    qrCodeBase64: transactionData.qr_code_base64,
+    ticketUrl: transactionData.ticket_url,
+  };
 }

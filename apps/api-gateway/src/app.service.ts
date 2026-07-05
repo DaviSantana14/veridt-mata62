@@ -4,14 +4,18 @@ import {
   type AuthResponse,
   type ChangePasswordRequest,
   type ContentRecordResponse,
+  type CreateCardPaymentRequest,
+  type CreateCardPaymentResponse,
   type CreateCreditPurchaseRequest,
   type CreateCreditPurchaseResponse,
+  type CreateEmbeddedCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
   type LoginUserRequest,
   type PurchaseCreditsRequest,
   type RegisterUserRequest,
   type ServiceName,
+  type SimulatePaymentResponse,
   type StartCaptureRequest,
   type UpdateUserProfileRequest,
   type UserResponse,
@@ -174,6 +178,56 @@ export class AppService {
       {
         'idempotency-key': idempotencyKey,
       },
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  createCardPurchase(
+    body: CreateCreditPurchaseRequest,
+    idempotencyKey: string,
+  ): Promise<CreateEmbeddedCreditPurchaseResponse> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      '/purchases/card',
+      body,
+      {
+        'idempotency-key': idempotencyKey,
+      },
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  createMercadoPagoCardPayment(
+    purchaseId: string,
+    body: CreateCardPaymentRequest,
+    idempotencyKey: string,
+  ): Promise<CreateCardPaymentResponse> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      `/purchases/${purchaseId}/mercado-pago/card-payment`,
+      body,
+      {
+        'idempotency-key': idempotencyKey,
+      },
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  simulatePayment(purchaseId: string): Promise<SimulatePaymentResponse> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      `/purchases/${purchaseId}/simulate-payment`,
+      {},
+      {},
       {
         preserveClientErrors: true,
       },

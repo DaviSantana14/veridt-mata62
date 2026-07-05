@@ -15,14 +15,18 @@ import { LoginDto } from './dto/login.dto';
 import type {
   AuthResponse,
   ContentRecordResponse,
+  CreateCardPaymentResponse,
   CreateCreditPurchaseResponse,
+  CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
   HealthResponse,
   PurchaseCreditsRequest,
+  SimulatePaymentResponse,
   UserResponse,
 } from '@veridit/contracts';
 import { AppService } from './app.service';
 import type { GatewayHealthResponse } from './app.service';
+import { CreateCardPaymentDto } from './dto/create-card-payment.dto';
 import { CreateCreditPurchaseDto } from './dto/create-credit-purchase.dto';
 import { MockCaptureDto } from './dto/mock-capture.dto';
 import { MockPurchaseDto } from './dto/mock-purchase.dto';
@@ -126,6 +130,42 @@ export class AppController {
     }
 
     return this.appService.createCreditPurchase(body, idempotencyKey);
+  }
+
+  @Post('billing/purchases/card')
+  createCardPurchase(
+    @Body() body: CreateCreditPurchaseDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ): Promise<CreateEmbeddedCreditPurchaseResponse> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return this.appService.createCardPurchase(body, idempotencyKey);
+  }
+
+  @Post('billing/purchases/:purchaseId/mercado-pago/card-payment')
+  createMercadoPagoCardPayment(
+    @Param('purchaseId') purchaseId: string,
+    @Body() body: CreateCardPaymentDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ): Promise<CreateCardPaymentResponse> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return this.appService.createMercadoPagoCardPayment(
+      purchaseId,
+      body,
+      idempotencyKey,
+    );
+  }
+
+  @Post('billing/purchases/:purchaseId/simulate-payment')
+  simulatePayment(
+    @Param('purchaseId') purchaseId: string,
+  ): Promise<SimulatePaymentResponse> {
+    return this.appService.simulatePayment(purchaseId);
   }
 
   @Post('billing/payments/mercado-pago/webhook')
