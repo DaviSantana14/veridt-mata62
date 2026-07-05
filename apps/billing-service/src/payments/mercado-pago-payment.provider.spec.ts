@@ -106,6 +106,7 @@ describe('MercadoPagoPaymentProvider checkout preference', () => {
 
     expect(preferenceCreate).toHaveBeenCalledWith({
       body: expect.objectContaining({
+        auto_return: undefined,
         back_urls: {
           success:
             'http://localhost:3000/pagamento/retorno?status=success',
@@ -122,6 +123,80 @@ describe('MercadoPagoPaymentProvider checkout preference', () => {
           userId: 'user-1',
           credits: 10,
         },
+      }),
+      requestOptions: {
+        idempotencyKey: 'key-1',
+      },
+    });
+  });
+
+  it('omits auto_return when success back URL points to localhost', async () => {
+    preferenceCreate.mockResolvedValue({
+      id: 'preference-1',
+      sandbox_init_point: 'https://sandbox.mercadopago.test/checkout',
+    });
+
+    await new MercadoPagoPaymentProvider().createCheckoutPreference(
+      checkoutInput,
+    );
+
+    expect(preferenceCreate).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        auto_return: undefined,
+        back_urls: expect.objectContaining({
+          success:
+            'http://localhost:3000/pagamento/retorno?status=success',
+        }),
+      }),
+      requestOptions: {
+        idempotencyKey: 'key-1',
+      },
+    });
+  });
+
+  it('sends auto_return when success back URL is public', async () => {
+    process.env.FRONTEND_SUCCESS_URL =
+      'https://app.example.com/pagamento/retorno?status=success';
+    preferenceCreate.mockResolvedValue({
+      id: 'preference-1',
+      sandbox_init_point: 'https://sandbox.mercadopago.test/checkout',
+    });
+
+    await new MercadoPagoPaymentProvider().createCheckoutPreference(
+      checkoutInput,
+    );
+
+    expect(preferenceCreate).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        auto_return: 'approved',
+        back_urls: expect.objectContaining({
+          success:
+            'https://app.example.com/pagamento/retorno?status=success',
+        }),
+      }),
+      requestOptions: {
+        idempotencyKey: 'key-1',
+      },
+    });
+  });
+
+  it('uses fallback redirect URL when configured URL is blank', async () => {
+    process.env.FRONTEND_SUCCESS_URL = ' ';
+    preferenceCreate.mockResolvedValue({
+      id: 'preference-1',
+      sandbox_init_point: 'https://sandbox.mercadopago.test/checkout',
+    });
+
+    await new MercadoPagoPaymentProvider().createCheckoutPreference(
+      checkoutInput,
+    );
+
+    expect(preferenceCreate).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        back_urls: expect.objectContaining({
+          success:
+            'http://localhost:3000/pagamento/retorno?status=success',
+        }),
       }),
       requestOptions: {
         idempotencyKey: 'key-1',

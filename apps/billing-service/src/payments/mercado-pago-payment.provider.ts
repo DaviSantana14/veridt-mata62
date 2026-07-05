@@ -23,7 +23,9 @@ function requireEnv(name: string): string {
 }
 
 function optionalUrl(name: string, fallback: string): string {
-  return process.env[name] ?? fallback;
+  const value = process.env[name]?.trim();
+
+  return value || fallback;
 }
 
 function getMercadoPagoEnvironment(): 'sandbox' | 'production' {
@@ -41,6 +43,15 @@ function selectCheckoutUrl(response: {
     : response.sandbox_init_point;
 }
 
+function shouldAutoReturn(successUrl: string): boolean {
+  try {
+    const url = new URL(successUrl);
+    return !['localhost', '127.0.0.1'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 @Injectable()
 export class MercadoPagoPaymentProvider implements PaymentProvider {
   private clients?: MercadoPagoClients;
@@ -50,6 +61,20 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
   ): Promise<CreateCheckoutPreferenceResult> {
     const { preference } = this.getClients();
     const amount = input.amountInCents / 100;
+    const backUrls = {
+      success: optionalUrl(
+        'FRONTEND_SUCCESS_URL',
+        'http://localhost:3000/pagamento/retorno?status=success',
+      ),
+      failure: optionalUrl(
+        'FRONTEND_FAILURE_URL',
+        'http://localhost:3000/pagamento/retorno?status=failure',
+      ),
+      pending: optionalUrl(
+        'FRONTEND_PENDING_URL',
+        'http://localhost:3000/pagamento/retorno?status=pending',
+      ),
+    };
 
     const response = await preference.create({
       body: {
@@ -65,21 +90,10 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
         payer: {
           email: input.payerEmail,
         },
-        back_urls: {
-          success: optionalUrl(
-            'FRONTEND_SUCCESS_URL',
-            'http://localhost:3000/pagamento/retorno?status=success',
-          ),
-          failure: optionalUrl(
-            'FRONTEND_FAILURE_URL',
-            'http://localhost:3000/pagamento/retorno?status=failure',
-          ),
-          pending: optionalUrl(
-            'FRONTEND_PENDING_URL',
-            'http://localhost:3000/pagamento/retorno?status=pending',
-          ),
-        },
-        auto_return: 'approved',
+        back_urls: backUrls,
+        auto_return: shouldAutoReturn(backUrls.success)
+          ? 'approved'
+          : undefined,
         external_reference: input.purchaseId,
         notification_url: requireEnv('MERCADO_PAGO_WEBHOOK_URL'),
         metadata: {
