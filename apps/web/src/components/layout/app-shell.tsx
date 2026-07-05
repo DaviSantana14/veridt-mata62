@@ -7,6 +7,7 @@ import {
   Menu,
   Plus,
   ShieldCheck,
+  Sparkles,
   UserRound,
   Video,
 } from "lucide-react";
@@ -44,35 +45,35 @@ const navItems: Array<{
   description: string;
   icon: typeof LayoutDashboard;
 }> = [
-  {
-    href: "/dashboard",
-    label: "Dashboard",
-    active: "dashboard",
-    description: "Registros, status e atividade",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/captura",
-    label: "Nova Captura",
-    active: "capture",
-    description: "Registrar evidência web",
-    icon: Video,
-  },
-  {
-    href: "/creditos",
-    label: "Créditos",
-    active: "credits",
-    description: "Planos e saldo disponível",
-    icon: CreditCard,
-  },
-  {
-    href: "/perfil",
-    label: "Perfil",
-    active: "profile",
-    description: "Conta, segurança e preferências",
-    icon: UserRound,
-  },
-];
+    {
+      href: "/dashboard",
+      label: "Dashboard",
+      active: "dashboard",
+      description: "Registros, status e atividade",
+      icon: LayoutDashboard,
+    },
+    {
+      href: "/captura",
+      label: "Nova Captura",
+      active: "capture",
+      description: "Registrar evidência web",
+      icon: Video,
+    },
+    {
+      href: "/creditos",
+      label: "Créditos",
+      active: "credits",
+      description: "Planos e saldo disponível",
+      icon: CreditCard,
+    },
+    {
+      href: "/perfil",
+      label: "Perfil",
+      active: "profile",
+      description: "Conta, segurança e preferências",
+      icon: UserRound,
+    },
+  ];
 
 function NavigationList({
   active,
@@ -246,11 +247,13 @@ export function ProductShell({
                   ) : null}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Badge className="hidden rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)] sm:inline-flex">
-                    <ShieldCheck aria-hidden="true" />
-                    <CreditBalanceText />
-                  </Badge>
+                <div className="flex items-center gap-3">
+                  <div className="header-credit-pill">
+                    <Sparkles className="header-credit-icon" aria-hidden="true" />
+                    <span className="header-credit-value">
+                      <CreditBalanceText />
+                    </span>
+                  </div>
                   <UserMenu />
                 </div>
               </div>

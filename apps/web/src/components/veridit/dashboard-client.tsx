@@ -9,6 +9,8 @@ import {
   FileText,
   Plus,
   Search,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,14 +33,19 @@ import {
 import { EvidenceCard } from "@/components/veridit/evidence-card";
 import { useUserCreditBalance } from "@/components/veridit/credit-balance";
 import { MetricPanel } from "@/components/veridit/metric-panel";
-import { SectionHeader } from "@/components/veridit/section-header";
 import { StatusPill } from "@/components/veridit/status-pill";
-import { Timeline } from "@/components/veridit/timeline";
 import { getAuthSession } from "@/lib/auth-session";
-import { currentUser, dashboardActivity, records } from "@/lib/mock-data";
+import { currentUser, records } from "@/lib/mock-data";
 
 function getFirstName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] || currentUser.firstName;
+}
+
+function getTimeGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
 }
 
 export function DashboardClient() {
@@ -58,6 +65,7 @@ export function DashboardClient() {
   const inProgress = records.filter(
     (record) => record.status === "progress",
   ).length;
+  const creditValue = creditsLoading && credits === null ? null : (credits ?? 0);
 
   const filteredRecords = useMemo(() => {
     if (!normalized) {
@@ -73,56 +81,92 @@ export function DashboardClient() {
   }, [normalized]);
 
   return (
-    <div className="grid gap-8">
-      <SectionHeader
-        title={`Bom dia, ${firstName}. Suas evidências estão organizadas para auditoria.`}
-        description="Acompanhe capturas, relatórios, status e saldo em uma visão operacional para rotinas jurídicas."
-        action={
-          <Button asChild>
-            <Link href="/captura">
-              <Plus data-icon="inline-start" aria-hidden="true" />
-              Nova Captura
-            </Link>
-          </Button>
-        }
-      />
-
-      <section
-        className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
-        aria-label="Resumo"
-      >
-        <MetricPanel
-          label="Total de registros"
-          value={records.length}
-          description="Base de evidências"
-          icon={FileText}
-        />
-        <MetricPanel
-          label="Concluídos"
-          value={completed}
-          description="Com hash disponível"
-          icon={CheckCircle2}
-          tone="success"
-        />
-        <MetricPanel
-          label="Em validação"
-          value={inProgress}
-          description="Processamento ativo"
-          icon={Clock3}
-          tone="warning"
-        />
-        <MetricPanel
-          label="Créditos"
-          value={creditsLoading && credits === null ? "..." : (credits ?? 0)}
-          description="Saldo para novas capturas"
-          icon={CreditCard}
-          tone="evidence"
-        />
+    <div className="grid gap-7">
+      {/* Hero greeting + credit banner */}
+      <section className="credit-hero reveal-up" style={{ animationDelay: "0ms" }}>
+        <div className="credit-hero-content">
+          <div className="credit-hero-left">
+            <p className="credit-hero-greeting">
+              {getTimeGreeting()}, {firstName}
+            </p>
+            <p className="credit-hero-subtitle">
+              Suas evidências estão organizadas para auditoria.
+            </p>
+          </div>
+          <div className="credit-hero-right">
+            <div className="credit-hero-balance">
+              <div className="credit-hero-balance-icon">
+                <Sparkles aria-hidden="true" />
+              </div>
+              <div className="credit-hero-balance-info">
+                <span className="credit-hero-balance-label">Saldo disponível</span>
+                <span className="credit-hero-balance-value">
+                  {creditValue === null ? (
+                    <span className="credit-hero-loading">...</span>
+                  ) : (
+                    <>
+                      {creditValue}
+                      <span className="credit-hero-balance-unit">créditos</span>
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
+            <div className="credit-hero-actions">
+              <Button asChild size="sm" variant="secondary" className="credit-hero-buy-btn">
+                <Link href="/creditos">
+                  <Zap aria-hidden="true" />
+                  Comprar créditos
+                </Link>
+              </Button>
+              <Button asChild size="sm" className="credit-hero-capture-btn">
+                <Link href="/captura">
+                  <Plus data-icon="inline-start" aria-hidden="true" />
+                  Nova Captura
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      {/* Metric cards */}
+      <section
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        aria-label="Resumo"
+      >
+        <div className="reveal-up" style={{ animationDelay: "60ms" }}>
+          <MetricPanel
+            label="Total de registros"
+            value={records.length}
+            description="Base de evidências"
+            icon={FileText}
+          />
+        </div>
+        <div className="reveal-up" style={{ animationDelay: "120ms" }}>
+          <MetricPanel
+            label="Concluídos"
+            value={completed}
+            description="Com hash disponível"
+            icon={CheckCircle2}
+            tone="success"
+          />
+        </div>
+        <div className="reveal-up" style={{ animationDelay: "180ms" }}>
+          <MetricPanel
+            label="Em validação"
+            value={inProgress}
+            description="Processamento ativo"
+            icon={Clock3}
+            tone="warning"
+          />
+        </div>
+      </section>
+
+      {/* Records table — full width */}
+      <div className="reveal-up" style={{ animationDelay: "240ms" }}>
         <Card className="premium-card rounded-2xl">
-          <CardHeader className="gap-4 lg:grid lg:grid-cols-[1fr_320px] lg:items-center">
+          <CardHeader className="gap-4 lg:grid lg:grid-cols-[1fr_360px] lg:items-center">
             <div>
               <CardTitle>Registros de evidência</CardTitle>
               <CardDescription>
@@ -198,18 +242,6 @@ export function DashboardClient() {
                 Nenhum registro encontrado para a busca.
               </div>
             ) : null}
-          </CardContent>
-        </Card>
-
-        <Card className="premium-card rounded-2xl">
-          <CardHeader>
-            <CardTitle>Atividade recente</CardTitle>
-            <CardDescription>
-              Eventos relevantes do cofre de evidências.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Timeline items={dashboardActivity} />
           </CardContent>
         </Card>
       </div>
