@@ -140,7 +140,7 @@ function SidebarNav({ active }: { active: ActiveRoute }) {
   return (
     <aside className="hidden min-h-dvh w-[288px] shrink-0 border-r bg-card/90 px-4 py-5 shadow-[8px_0_30px_rgb(15_23_42/0.04)] backdrop-blur xl:block">
       <div className="sticky top-5 flex h-[calc(100dvh-2.5rem)] flex-col">
-        <VeriditLogo />
+        <VeriditLogo href="/dashboard" />
         <div className="mt-7">
           <NavigationList active={active} />
         </div>
@@ -194,7 +194,7 @@ function MobileNav({ active }: { active: ActiveRoute }) {
         </SheetHeader>
         <ScrollArea className="h-dvh">
           <div className="flex min-h-dvh flex-col gap-6 p-5">
-            <VeriditLogo />
+            <VeriditLogo href="/dashboard" />
             <NavigationList active={active} />
             <Separator />
             <div className="rounded-2xl border bg-secondary/65 p-4">
@@ -234,7 +234,7 @@ export function ProductShell({
                 <div className="flex min-w-0 items-center gap-3">
                   <MobileNav active={active} />
                   <div className="xl:hidden">
-                    <VeriditLogo className="min-h-10 text-lg" />
+                    <VeriditLogo href="/dashboard" className="min-h-10 text-lg" />
                   </div>
                   {active === "dashboard" ? (
                     <Badge

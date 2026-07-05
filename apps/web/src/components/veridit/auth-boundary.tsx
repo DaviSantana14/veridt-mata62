@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   AUTH_SESSION_CHANGED_EVENT,
@@ -31,6 +36,7 @@ function getServerAuthSessionSnapshot() {
 
 export function AuthBoundary({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const authorized = useSyncExternalStore(
     subscribeToAuthSession,
     getAuthSessionSnapshot,
@@ -38,12 +44,16 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (!authorized) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (mounted && !authorized) {
       router.replace("/login");
     }
-  }, [authorized, router]);
+  }, [mounted, authorized, router]);
 
-  if (!authorized) {
+  if (!mounted || !authorized) {
     return null;
   }
 
