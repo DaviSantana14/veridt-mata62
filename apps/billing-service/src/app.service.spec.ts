@@ -301,6 +301,27 @@ describe('AppService Mercado Pago billing flow', () => {
     });
   });
 
+  it('processes Mercado Pago webhooks when payment id arrives as query data.id', async () => {
+    paymentProvider.getPayment.mockResolvedValue({
+      providerPaymentId: 'payment-1',
+      status: 'pending',
+      externalReference: 'purchase-1',
+    });
+    prisma.creditPurchase.findUnique.mockResolvedValue(makePurchase());
+
+    const result = await service.handleMercadoPagoWebhook({
+      type: 'payment',
+      'data.id': 'payment-1',
+    });
+
+    expect(paymentProvider.getPayment).toHaveBeenCalledWith('payment-1');
+    expect(result).toEqual({
+      received: true,
+      processed: false,
+      status: 'pending',
+    });
+  });
+
   it('rejects Mercado Pago webhook when secret is configured and signature is missing', async () => {
     process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'webhook-secret';
 

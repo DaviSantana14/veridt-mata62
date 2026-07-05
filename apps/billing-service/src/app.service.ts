@@ -59,6 +59,7 @@ export type MercadoPagoWebhookPayload = {
   data?: {
     id?: string | number;
   };
+  'data.id'?: string | number;
   date_created?: string;
   id?: string | number;
   live_mode?: boolean;
@@ -541,7 +542,7 @@ export class AppService {
   private extractPaymentId(
     payload: MercadoPagoWebhookPayload,
   ): string | undefined {
-    const paymentId = payload.data?.id ?? payload.id;
+    const paymentId = payload.data?.id ?? payload['data.id'] ?? payload.id;
 
     if (!paymentId) {
       return undefined;

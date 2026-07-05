@@ -180,4 +180,38 @@ describe('Api Gateway AppService billing purchases', () => {
     );
     expect(result).toEqual(response);
   });
+
+  it('normalizes Mercado Pago query data.id into the proxied webhook data object', async () => {
+    const response = {
+      received: true,
+      processed: false,
+    };
+
+    fetchMock.mockResolvedValue(fetchResponse(200, response));
+
+    await service.handleMercadoPagoWebhook(
+      {
+        type: 'payment',
+      },
+      {
+        'x-request-id': 'request-1',
+      },
+      {
+        'data.id': 'payment-1',
+      },
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3102/payments/mercado-pago/webhook',
+      expect.objectContaining({
+        body: JSON.stringify({
+          'data.id': 'payment-1',
+          type: 'payment',
+          data: {
+            id: 'payment-1',
+          },
+        }),
+      }),
+    );
+  });
 });

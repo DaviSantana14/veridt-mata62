@@ -189,11 +189,7 @@ export class AppService {
       'billing-service',
       this.urls.billing,
       '/payments/mercado-pago/webhook',
-      {
-        ...query,
-        ...body,
-        data: body.data ?? query.data,
-      },
+      this.normalizeMercadoPagoWebhookPayload(body, query),
       this.filterMercadoPagoWebhookHeaders(headers),
       {
         preserveClientErrors: true,
@@ -338,5 +334,22 @@ export class AppService {
     }
 
     return forwardedHeaders;
+  }
+
+  private normalizeMercadoPagoWebhookPayload(
+    body: Record<string, unknown>,
+    query: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const data = body.data ?? query.data ?? this.toDataObject(query['data.id']);
+
+    return {
+      ...query,
+      ...body,
+      ...(data ? { data } : {}),
+    };
+  }
+
+  private toDataObject(dataId: unknown): { id: unknown } | undefined {
+    return dataId ? { id: dataId } : undefined;
   }
 }
