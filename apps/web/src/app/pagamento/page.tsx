@@ -5,8 +5,16 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { PaymentClient } from "@/components/veridit/payment-client";
 import { SectionHeader } from "@/components/veridit/section-header";
+import { plans, type CreditPlan } from "@/lib/mock-data";
 
-export default function PaymentPage() {
+type PaymentPageProps = {
+  searchParams: Promise<{ plan?: string | string[] }>;
+};
+
+export default async function PaymentPage({ searchParams }: PaymentPageProps) {
+  const params = await searchParams;
+  const selectedPlan = resolveSelectedPlan(params.plan);
+
   return (
     <AppShell active="credits">
       <div className="grid gap-6">
@@ -18,12 +26,22 @@ export default function PaymentPage() {
           </Button>
           <SectionHeader
             eyebrow="Checkout"
-            title="Finalize a compra do pacote profissional."
-            description="Escolha a forma de pagamento e confirme o crédito no ambiente demonstrativo."
+            title={`Finalize a compra do ${selectedPlan.name}.`}
+            description="Conclua o pagamento com Mercado Pago em uma experiência protegida."
           />
         </div>
-        <PaymentClient />
+        <PaymentClient packageName={selectedPlan.gatewayPackageName} />
       </div>
     </AppShell>
+  );
+}
+
+function resolveSelectedPlan(plan: string | string[] | undefined): CreditPlan {
+  const packageName = Array.isArray(plan) ? plan[0] : plan;
+
+  return (
+    plans.find((item) => item.gatewayPackageName === packageName) ??
+    plans.find((item) => item.gatewayPackageName === "medium") ??
+    plans[1]
   );
 }

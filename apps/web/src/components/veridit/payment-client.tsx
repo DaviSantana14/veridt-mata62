@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import Script from "next/script";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
-  Clock3,
   Copy,
   CreditCard,
+  ExternalLink,
   Loader2,
   LockKeyhole,
-  QrCode,
   ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -23,201 +23,528 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import { createCreditPurchase, createMockPurchase } from "@/lib/gateway";
-import { currentUser, plans } from "@/lib/mock-data";
+  createCardPayment,
+  createEmbeddedCreditPurchase,
+  simulatePayment,
+} from "@/lib/gateway";
+import { currentUser } from "@/lib/mock-data";
+import type { CreateCardPaymentResponse } from "@veridit/contracts";
 
-const pixCode =
-  "00020126580014br.gov.bcb.pix0136123e4567-e89b-12d3-a456-426614174000520400005303986540649.905802BR5913RiSE Labs6009SAO PAULO62140510VERIDIT0016304A12B";
+type BrickStatus = "preparing" | "ready" | "submitting" | "error";
 
-const selectedPlan = plans[1];
+type PaymentBrickFormData = {
+  token?: string;
+  installments?: number | string;
+  payment_method_id?: string;
+  paymentMethodId?: string;
+  issuer_id?: string;
+  issuerId?: string;
+  payer?: {
+    email?: string;
+    identification?: {
+      type?: string;
+      number?: string;
+    };
+  };
+};
 
-export function PaymentClient() {
+type PaymentBrickSubmitPayload =
+  | PaymentBrickFormData
+  | {
+      selectedPaymentMethod?: string;
+      formData?: PaymentBrickFormData;
+    };
+
+type BrickController = {
+  unmount?: () => void;
+};
+
+type MercadoPagoInstance = {
+  bricks: () => {
+    create: (
+      type: "payment",
+      containerId: string,
+      settings: unknown,
+    ) => Promise<BrickController>;
+  };
+};
+
+declare global {
+  interface Window {
+    MercadoPago?: new (publicKey: string) => MercadoPagoInstance;
+  }
+}
+
+const brickContainerId = "mercado-pago-payment";
+
+export function PaymentClient({
+  packageName,
+}: {
+  packageName: "basic" | "medium" | "premium";
+}) {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"pix" | "mercado-pago">(
-    "pix",
-  );
+  const [sdkReady, setSdkReady] = useState(false);
+  const [status, setStatus] = useState<BrickStatus>("preparing");
+  const [simulationPending, setSimulationPending] = useState(false);
+  const [purchase, setPurchase] = useState<{
+    purchaseId: string;
+    amountInCents: number;
+    credits: number;
+    packageDisplayName: string;
+    pricePerCreditInCents: number;
+  } | null>(null);
+  const [pix, setPix] = useState<CreateCardPaymentResponse["pix"] | null>(null);
+  const controllerRef = useRef<BrickController | null>(null);
+  const initializedRef = useRef(false);
+  const paymentIdempotencyKeyRef = useRef<string | null>(null);
 
-  async function confirmPayment() {
-    setPending(true);
+  useEffect(() => {
+    if (window.MercadoPago) {
+      setSdkReady(true);
+    }
+  }, []);
 
-    if (paymentMethod === "mercado-pago") {
-      const result = await createCreditPurchase(
+  useEffect(() => {
+    if (!sdkReady || initializedRef.current) {
+      return;
+    }
+
+    const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
+
+    if (!publicKey) {
+      setStatus("error");
+      toast.error("Chave pública do Mercado Pago não configurada.");
+      return;
+    }
+
+    const mercadoPagoPublicKey = publicKey;
+
+    if (!window.MercadoPago) {
+      setStatus("error");
+      toast.error("SDK do Mercado Pago indisponível.");
+      return;
+    }
+
+    const MercadoPago = window.MercadoPago;
+    initializedRef.current = true;
+    let cancelled = false;
+
+    async function renderBrick() {
+      setStatus("preparing");
+
+      const purchaseResult = await createEmbeddedCreditPurchase(
         {
           userId: "user-demo-001",
-          packageName: selectedPlan.gatewayPackageName,
+          packageName,
           payerEmail: currentUser.email,
         },
         crypto.randomUUID(),
       );
 
-      setPending(false);
-
-      if (result.ok) {
-        window.location.assign(result.data.checkoutUrl);
+      if (cancelled) {
         return;
       }
 
-      toast.error("Não foi possível abrir o checkout sandbox.", {
+      if (!purchaseResult.ok) {
+        setStatus("error");
+        toast.error("Não foi possível iniciar a compra.", {
+          description: purchaseResult.message,
+        });
+        return;
+      }
+
+      const pendingPurchase = {
+        purchaseId: purchaseResult.data.purchaseId,
+        amountInCents: purchaseResult.data.amountInCents,
+        credits: purchaseResult.data.credits,
+        packageDisplayName: purchaseResult.data.packageDisplayName,
+        pricePerCreditInCents: purchaseResult.data.pricePerCreditInCents,
+      };
+
+      setPurchase(pendingPurchase);
+
+      const mercadoPago = new MercadoPago(mercadoPagoPublicKey);
+      const bricksBuilder = mercadoPago.bricks();
+
+      setStatus("ready");
+      controllerRef.current = await bricksBuilder.create(
+        "payment",
+        brickContainerId,
+        {
+          initialization: {
+            amount: pendingPurchase.amountInCents / 100,
+            payer: {
+              email: currentUser.email,
+            },
+          },
+          customization: {
+            paymentMethods: {
+              creditCard: "all",
+              debitCard: "all",
+              bankTransfer: "all",
+            },
+          },
+          callbacks: {
+            onReady: () => {
+              setStatus("ready");
+            },
+            onSubmit: async (payload: PaymentBrickSubmitPayload) => {
+              setStatus("submitting");
+
+              const formData = extractPaymentBrickFormData(payload);
+
+              const paymentResult = await createCardPayment(
+                pendingPurchase.purchaseId,
+                normalizePaymentBrickFormData(formData, payload),
+                getStablePaymentIdempotencyKey(paymentIdempotencyKeyRef),
+              );
+
+              if (!paymentResult.ok) {
+                setStatus("ready");
+                toast.error("Pagamento não autorizado.", {
+                  description: paymentResult.message,
+                });
+                throw new Error(paymentResult.message);
+              }
+
+              if (paymentResult.data.status === "PAID") {
+                toast.success("Pagamento aprovado. Créditos em atualização.");
+                router.push("/dashboard");
+                return;
+              }
+
+              if (paymentResult.data.status === "PENDING") {
+                if (
+                  paymentResult.data.pix?.qrCode ||
+                  paymentResult.data.pix?.qrCodeBase64
+                ) {
+                  setPix(paymentResult.data.pix);
+                  setStatus("ready");
+                  toast.info(
+                    "Pix gerado. Conclua o pagamento para liberar os créditos.",
+                  );
+                  return;
+                }
+
+                toast.info("Pagamento em análise.", {
+                  description:
+                    "Você pode acompanhar a atualização pelo painel.",
+                });
+                router.push("/dashboard");
+                return;
+              }
+
+              toast.warning("Pagamento não concluído.");
+              router.push("/creditos");
+            },
+            onError: () => {
+              setStatus("error");
+              toast.error("O formulário de cartão encontrou um erro.");
+            },
+          },
+        },
+      );
+    }
+
+    renderBrick().catch((error) => {
+      setStatus("error");
+      toast.error("Não foi possível carregar o pagamento.", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      controllerRef.current?.unmount?.();
+      controllerRef.current = null;
+    };
+  }, [router, sdkReady]);
+
+  const loading = status === "preparing" || status === "submitting";
+
+  async function handleSimulatePayment() {
+    if (!purchase || simulationPending) {
+      return;
+    }
+
+    setSimulationPending(true);
+    const result = await simulatePayment(purchase.purchaseId);
+
+    if (!result.ok) {
+      setSimulationPending(false);
+      toast.error("Não foi possível simular o pagamento.", {
         description: result.message,
       });
       return;
     }
 
-    const result = await createMockPurchase({
-      userId: "user-demo-001",
-      packageName: selectedPlan.gatewayPackageName,
-      payerEmail: currentUser.email,
+    const params = new URLSearchParams({
+      purchaseId: result.data.purchaseId,
+      credits: String(result.data.credits),
+      package: result.data.packageDisplayName,
     });
-    setPending(false);
 
-    if (result.ok) {
-      toast.success("Pix simulado confirmado.");
-    } else {
-      toast.warning("Confirmação Pix simulada. API Gateway indisponível.", {
-        description: result.message,
-      });
-    }
-    router.push("/dashboard");
+    router.push(`/pagamento/confirmacao?${params.toString()}`);
   }
 
+  return (
+    <>
+      <Script
+        src="https://sdk.mercadopago.com/js/v2"
+        strategy="afterInteractive"
+        onLoad={() => setSdkReady(true)}
+        onError={() => {
+          setStatus("error");
+          toast.error("Não foi possível carregar o Mercado Pago.");
+        }}
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <Card className="premium-card rounded-2xl">
+          <CardHeader>
+            <CardTitle>Pagamento com Mercado Pago</CardTitle>
+            <CardDescription>
+              Escolha cartão ou Pix para concluir a compra com Mercado Pago.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-6">
+            <Alert className="border-primary/20 bg-primary/5">
+              <LockKeyhole aria-hidden="true" />
+              <AlertTitle>Pagamento protegido</AlertTitle>
+              <AlertDescription>
+                Os dados sensíveis são processados pelo Mercado Pago antes do
+                envio.
+              </AlertDescription>
+            </Alert>
+
+            <div className="relative min-h-[520px] rounded-xl border bg-background p-4">
+              {loading ? (
+                <div className="absolute inset-4 z-10 grid place-items-center rounded-lg bg-background/95 text-center text-sm text-muted-foreground">
+                  <div>
+                    <Loader2
+                      className="mx-auto mb-3 size-6 animate-spin text-primary"
+                      aria-hidden="true"
+                    />
+                    Preparando pagamento...
+                  </div>
+                </div>
+              ) : null}
+              <div
+                id={brickContainerId}
+                className={loading ? "pointer-events-none opacity-0" : ""}
+              />
+            </div>
+
+            {pix ? <PixPaymentDetails pix={pix} /> : null}
+          </CardContent>
+        </Card>
+
+        <Card className="premium-card h-fit rounded-2xl">
+          <CardHeader>
+            <CardTitle>Resumo da compra</CardTitle>
+            <CardDescription>
+              {purchase?.packageDisplayName ?? "Carregando pacote"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-5">
+            <div className="rounded-2xl border bg-background/80 p-4">
+              <p className="text-sm text-muted-foreground">Pacote</p>
+              <p className="mt-1 font-semibold">
+                {purchase
+                  ? `${purchase.credits} créditos`
+                  : "Carregando créditos"}
+              </p>
+              <p className="mt-4 text-3xl font-semibold">
+                {purchase
+                  ? formatCurrency(purchase.amountInCents)
+                  : "Carregando"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {purchase
+                  ? `${formatCurrency(purchase.pricePerCreditInCents)} por registro`
+                  : "Valor definido pelo billing"}
+              </p>
+            </div>
+            <div className="grid gap-3 text-sm text-muted-foreground">
+              <p className="flex items-center gap-2">
+                <ShieldCheck
+                  className="text-[color:var(--success)]"
+                  aria-hidden="true"
+                />
+                Créditos adicionados após confirmação.
+              </p>
+              <p className="flex items-center gap-2">
+                {status === "submitting" ? (
+                  <Loader2
+                    className="animate-spin text-primary"
+                    aria-hidden="true"
+                  />
+                ) : status === "ready" ? (
+                  <CheckCircle2 className="text-primary" aria-hidden="true" />
+                ) : (
+                  <CreditCard className="text-primary" aria-hidden="true" />
+                )}
+                {getStatusCopy(status)}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!purchase || simulationPending}
+              onClick={handleSimulatePayment}
+            >
+              {simulationPending ? (
+                <Loader2
+                  data-icon="inline-start"
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
+              )}
+              Simular pagamento
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </>
+  );
+}
+
+function normalizePaymentBrickFormData(
+  formData: PaymentBrickFormData,
+  payload: PaymentBrickSubmitPayload,
+) {
+  const selectedPaymentMethod =
+    "selectedPaymentMethod" in payload
+      ? payload.selectedPaymentMethod
+      : undefined;
+  const paymentMethodId =
+    formData.paymentMethodId ??
+    formData.payment_method_id ??
+    selectedPaymentMethod;
+  const issuerId = formData.issuerId ?? formData.issuer_id;
+  const installments = Number(formData.installments);
+
+  if (!paymentMethodId) {
+    throw new Error("Dados do pagamento incompletos.");
+  }
+
+  if (
+    paymentMethodId !== "pix" &&
+    (!formData.token || !Number.isFinite(installments))
+  ) {
+    throw new Error("Dados do cartão incompletos.");
+  }
+
+  return {
+    token: formData.token,
+    installments: Number.isFinite(installments) ? installments : undefined,
+    paymentMethodId,
+    selectedPaymentMethod,
+    issuerId,
+    payer: {
+      email: formData.payer?.email ?? currentUser.email,
+      identification: formData.payer?.identification,
+    },
+  };
+}
+
+function PixPaymentDetails({
+  pix,
+}: {
+  pix: NonNullable<CreateCardPaymentResponse["pix"]>;
+}) {
   async function copyPixCode() {
-    await navigator.clipboard.writeText(pixCode);
+    if (!pix.qrCode) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(pix.qrCode);
     toast.success("Código Pix copiado.");
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <Card className="premium-card rounded-2xl">
-        <CardHeader>
-          <CardTitle>Forma de pagamento</CardTitle>
-          <CardDescription>
-            Selecione Pix demonstrativo ou Mercado Pago sandbox.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-6">
-          <Alert className="border-primary/20 bg-primary/5">
-            <LockKeyhole aria-hidden="true" />
-            <AlertTitle>Checkout demonstrativo seguro</AlertTitle>
-            <AlertDescription>
-              Pix usa confirmação simulada. Mercado Pago cria uma preferência real em sandbox.
-            </AlertDescription>
-          </Alert>
+    <div className="grid gap-4 rounded-xl border bg-background p-4">
+      <div>
+        <p className="font-semibold">Pix gerado pelo Mercado Pago</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Escaneie o QR Code ou copie o código para concluir o pagamento.
+        </p>
+      </div>
 
-          <Tabs
-            value={paymentMethod}
-            onValueChange={(value) =>
-              setPaymentMethod(value as "pix" | "mercado-pago")
-            }
-            className="w-full"
-          >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="pix">
-                <QrCode data-icon="inline-start" aria-hidden="true" />
-                Pix
-              </TabsTrigger>
-              <TabsTrigger value="mercado-pago">
-                <CreditCard data-icon="inline-start" aria-hidden="true" />
-                Mercado Pago
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="pix" className="pt-5">
-              <div className="grid gap-5">
-                <div className="mx-auto flex size-52 items-center justify-center rounded-2xl border bg-card p-3 shadow-sm">
-                  <div className="surface-grid flex size-full items-center justify-center rounded-xl bg-muted text-primary">
-                    <QrCode className="size-24" aria-hidden="true" />
-                  </div>
-                </div>
-                <p className="text-center text-sm text-muted-foreground">
-                  Escaneie o QR Code ou copie o código Pix abaixo.
-                </p>
-                <div>
-                  <p className="mb-2 text-sm font-medium">Código Pix</p>
-                  <div className="grid gap-2 sm:grid-cols-[1fr_44px]">
-                    <div className="min-h-14 overflow-hidden rounded-xl border bg-background p-3 font-mono text-xs leading-5 text-muted-foreground">
-                      {pixCode}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      aria-label="Copiar código Pix"
-                      onClick={copyPixCode}
-                    >
-                      <Copy aria-hidden="true" />
-                    </Button>
-                  </div>
-                </div>
-                <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                  <Clock3 aria-hidden="true" />
-                  O QR Code expira em 30 minutos
-                </p>
-              </div>
-            </TabsContent>
-            <TabsContent value="mercado-pago" className="pt-5">
-              <div className="grid min-h-[360px] place-items-center rounded-2xl border border-dashed bg-muted/35 p-8 text-center">
-                <div>
-                  <CreditCard className="mx-auto size-12 text-primary" aria-hidden="true" />
-                  <p className="mt-4 font-semibold">Mercado Pago</p>
-                  <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
-                    Abra o checkout sandbox do Mercado Pago para concluir a compra.
-                  </p>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
+      {pix.qrCodeBase64 ? (
+        <div className="flex justify-center">
+          <img
+            src={`data:image/png;base64,${pix.qrCodeBase64}`}
+            alt="QR Code Pix"
+            className="size-52 rounded-lg border bg-white p-2"
+          />
+        </div>
+      ) : null}
 
-          <Button type="button" disabled={pending} onClick={confirmPayment} className="w-full">
-            {pending ? (
-              <Loader2 data-icon="inline-start" className="animate-spin" aria-hidden="true" />
-            ) : (
-              <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
-            )}
-            {paymentMethod === "mercado-pago"
-              ? "Ir para checkout sandbox"
-              : "Confirmar Pix simulado"}
+      {pix.qrCode ? (
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <div className="min-h-12 overflow-hidden rounded-lg border bg-muted/40 p-3 font-mono text-xs leading-5 text-muted-foreground">
+            {pix.qrCode}
+          </div>
+          <Button type="button" variant="outline" onClick={copyPixCode}>
+            <Copy data-icon="inline-start" aria-hidden="true" />
+            Copiar
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      ) : null}
 
-      <Card className="premium-card h-fit rounded-2xl">
-        <CardHeader>
-          <CardTitle>Resumo da compra</CardTitle>
-          <CardDescription>{selectedPlan.name}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-5">
-          <div className="rounded-2xl border bg-background/80 p-4">
-            <p className="text-sm text-muted-foreground">Pacote</p>
-            <p className="mt-1 font-semibold">{selectedPlan.records} créditos</p>
-            <p className="mt-4 text-3xl font-semibold">{selectedPlan.price}</p>
-            <p className="text-sm text-muted-foreground">{selectedPlan.pricePerRecord}</p>
-          </div>
-          <div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium">Segurança da compra</span>
-              <span className="text-muted-foreground">100%</span>
-            </div>
-            <Progress value={100} className="mt-2 h-2" />
-          </div>
-          <div className="grid gap-3 text-sm text-muted-foreground">
-            <p className="flex items-center gap-2">
-              <ShieldCheck className="text-[color:var(--success)]" aria-hidden="true" />
-              Créditos adicionados após confirmação.
-            </p>
-            <p className="flex items-center gap-2">
-              <LockKeyhole className="text-primary" aria-hidden="true" />
-              Use somente usuários e meios de pagamento de teste no sandbox.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      {pix.ticketUrl ? (
+        <Button asChild variant="outline" className="w-fit">
+          <a href={pix.ticketUrl} target="_blank" rel="noreferrer">
+            <ExternalLink data-icon="inline-start" aria-hidden="true" />
+            Abrir no Mercado Pago
+          </a>
+        </Button>
+      ) : null}
     </div>
   );
+}
+
+function extractPaymentBrickFormData(
+  payload: PaymentBrickSubmitPayload,
+): PaymentBrickFormData {
+  if ("formData" in payload && payload.formData) {
+    return payload.formData;
+  }
+
+  return payload as PaymentBrickFormData;
+}
+
+function formatCurrency(amountInCents: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(amountInCents / 100);
+}
+
+function getStatusCopy(status: BrickStatus) {
+  if (status === "ready") {
+    return "Formulário pronto para preenchimento.";
+  }
+
+  if (status === "submitting") {
+    return "Processando autorização.";
+  }
+
+  if (status === "error") {
+    return "Revise a configuração e tente novamente.";
+  }
+
+  return "Conectando ao provedor de pagamento.";
+}
+
+function getStablePaymentIdempotencyKey(ref: MutableRefObject<string | null>) {
+  if (!ref.current) {
+    ref.current = crypto.randomUUID();
+  }
+
+  return ref.current;
 }

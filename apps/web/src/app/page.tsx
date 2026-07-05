@@ -136,7 +136,7 @@ export default function Home() {
           </div>
           <Button asChild size="lg" className="w-fit">
             <Link href="/cadastro">
-              Criar conta demonstrativa
+              Criar conta
               <ArrowRight data-icon="inline-end" aria-hidden="true" />
             </Link>
           </Button>
@@ -147,7 +147,7 @@ export default function Home() {
         <div className="mx-auto flex min-h-[88px] w-full max-w-[1440px] flex-col gap-4 px-4 py-6 sm:flex-row sm:items-center sm:justify-between lg:px-8">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <VeriditLogo className="min-h-0 text-base" />
-            <span>Registro digital demonstrativo.</span>
+            <span>Registro digital verificável.</span>
           </div>
           <div className="flex items-center gap-6 text-sm">
             <Link className="text-muted-foreground hover:text-foreground" href="/login">

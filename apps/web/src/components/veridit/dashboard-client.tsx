@@ -92,7 +92,7 @@ export function DashboardClient() {
         <MetricPanel
           label="Total de registros"
           value={records.length}
-          description="Base demonstrativa"
+          description="Base de evidências"
           icon={FileText}
         />
         <MetricPanel

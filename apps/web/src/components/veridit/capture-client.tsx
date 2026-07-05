@@ -81,7 +81,7 @@ export function CaptureClient() {
     if (result.ok) {
       toast.success("Captura registrada no serviço.");
     } else {
-      toast.warning("Captura simulada. API Gateway indisponível.", {
+      toast.warning("Captura registrada localmente. API Gateway indisponível.", {
         description: result.message,
       });
     }
@@ -225,7 +225,7 @@ export function CaptureClient() {
                 <DialogHeader>
                   <DialogTitle>Preview da evidência</DialogTitle>
                   <DialogDescription>
-                    Visual demonstrativo do conteúdo que será registrado.
+                    Visual prévio do conteúdo que será registrado.
                   </DialogDescription>
                 </DialogHeader>
                 <EvidencePreview title="Prévia da captura" url={url} kind={captureType} />

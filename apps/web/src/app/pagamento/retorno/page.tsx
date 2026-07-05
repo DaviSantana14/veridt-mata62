@@ -35,7 +35,7 @@ const statusCopy: Record<
   pending: {
     title: "Pagamento pendente",
     description:
-      "O pagamento está em análise ou aguardando confirmação no ambiente sandbox.",
+      "O pagamento está em análise ou aguardando confirmação.",
     alertTitle: "Aguardando confirmação",
     icon: Clock3,
     className: "border-[color:var(--warning)]/30 bg-[color:var(--warning-soft)]",
@@ -43,7 +43,7 @@ const statusCopy: Record<
   failure: {
     title: "Pagamento não concluído",
     description:
-      "A compra não foi finalizada no Mercado Pago. Você pode tentar novamente com outro meio de pagamento sandbox.",
+      "A compra não foi finalizada no Mercado Pago. Você pode tentar novamente com cartão.",
     alertTitle: "Compra interrompida",
     icon: AlertCircle,
     className: "border-destructive/30 bg-destructive/5",
