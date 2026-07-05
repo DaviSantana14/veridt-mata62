@@ -63,7 +63,7 @@ describe('Api Gateway AppService billing purchases', () => {
 
     const result = await service.createCreditPurchase(purchaseBody, 'key-1');
 
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3102/purchases', {
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:3102/purchases', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -104,7 +104,7 @@ describe('Api Gateway AppService billing purchases', () => {
     );
   });
 
-  it('wraps billing 5xx responses as BadGatewayException', async () => {
+  it('forwards billing 5xx responses as HttpException payloads', async () => {
     fetchMock.mockResolvedValue(
       fetchResponse(503, {
         statusCode: 503,
@@ -112,9 +112,18 @@ describe('Api Gateway AppService billing purchases', () => {
       }),
     );
 
-    await expect(
+    await expectHttpException(
       service.createCreditPurchase(purchaseBody, 'key-1'),
-    ).rejects.toBeInstanceOf(BadGatewayException);
+      503,
+      {
+        service: 'billing-service',
+        statusCode: 503,
+        payload: {
+          statusCode: 503,
+          message: 'Billing unavailable',
+        },
+      },
+    );
   });
 
   it('wraps network errors as BadGatewayException', async () => {
