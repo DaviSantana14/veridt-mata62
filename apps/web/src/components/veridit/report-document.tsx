@@ -36,7 +36,7 @@ export function ReportDocument({ record }: { record: VeriditRecord }) {
         </div>
         <Badge className="mx-auto mt-4 rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)]">
           <BadgeCheck aria-hidden="true" />
-          Documento demonstrativo verificável
+          Documento verificável
         </Badge>
         <CardTitle className="mt-4 text-2xl">Relatório de Registro Digital</CardTitle>
         <CardDescription>

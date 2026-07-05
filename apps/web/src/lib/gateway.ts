@@ -1,5 +1,15 @@
+import type {
+  CreateCardPaymentRequest,
+  CreateCardPaymentResponse,
+  CreateEmbeddedCreditPurchaseResponse,
+  CreditPackageResponse,
+  SimulatePaymentResponse,
+  UserCreditBalanceResponse,
+} from "@veridit/contracts";
+
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:3001";
+const REQUEST_TIMEOUT_MS = 10000;
 
 type GatewayResult<T> =
   | { ok: true; data: T }
@@ -11,14 +21,17 @@ async function requestGateway<T>(
 ): Promise<GatewayResult<T>> {
   try {
     const url = `${BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     const response = await fetch(url, {
       ...init,
+      signal: init?.signal ?? controller.signal,
       headers: {
         "Content-Type": "application/json",
         ...(init?.headers ?? {}),
       },
-    });
+    }).finally(() => clearTimeout(timeoutId));
 
     const text = await response.text();
     const data = text ? JSON.parse(text) : null;
@@ -27,7 +40,8 @@ async function requestGateway<T>(
       return {
         ok: false,
         status: response.status,
-        message: data?.message ?? data?.payload?.message ?? `Erro ${response.status}`,
+        message:
+          data?.message ?? data?.payload?.message ?? `Erro ${response.status}`,
       };
     }
 
@@ -36,6 +50,13 @@ async function requestGateway<T>(
       data: data as T,
     };
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return {
+        ok: false,
+        message: "Tempo esgotado ao conectar com o gateway",
+      };
+    }
+
     return {
       ok: false,
       message:
@@ -64,6 +85,84 @@ export function createMockPurchase(payload: {
     {
       method: "POST",
       body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function createCreditPurchase(
+  payload: {
+    userId: string;
+    packageName: "basic" | "medium" | "premium";
+    payerEmail: string;
+  },
+  idempotencyKey: string,
+) {
+  return requestGateway<{
+    purchaseId: string;
+    status: "PENDING" | "PAID" | "CANCELED";
+    checkoutUrl: string;
+    providerPreferenceId: string;
+  }>("/billing/purchases", {
+    method: "POST",
+    headers: {
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createEmbeddedCreditPurchase(
+  payload: {
+    userId: string;
+    packageName: "basic" | "medium" | "premium";
+    payerEmail: string;
+  },
+  idempotencyKey: string,
+) {
+  return requestGateway<CreateEmbeddedCreditPurchaseResponse>(
+    "/billing/purchases/card",
+    {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function createCardPayment(
+  purchaseId: string,
+  payload: CreateCardPaymentRequest,
+  idempotencyKey: string,
+) {
+  return requestGateway<CreateCardPaymentResponse>(
+    `/billing/purchases/${purchaseId}/mercado-pago/card-payment`,
+    {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function simulatePayment(purchaseId: string) {
+  return requestGateway<SimulatePaymentResponse>(
+    `/billing/purchases/${purchaseId}/simulate-payment`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export function getUserCreditBalance(userId: string) {
+  return requestGateway<UserCreditBalanceResponse>(
+    `/billing/users/${userId}/credits`,
+    {
+      method: "GET",
     },
   );
 }
@@ -155,20 +254,17 @@ export function changeUserPassword(
     newPassword: string;
   },
 ) {
-  return requestGateway<{ message: string }>(`/identity/users/${userId}/password`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
+  return requestGateway<{ message: string }>(
+    `/identity/users/${userId}/password`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export async function getGatewayPlans() {
-  return requestGateway<
-    Array<{
-      id: string;
-      name: string;
-      credits: number;
-      pricePerCreditInCents: number;
-      benefits: string;
-    }>
-  >("/billing/packages", { cache: "no-store" });
+  return requestGateway<CreditPackageResponse[]>("/billing/packages", {
+    cache: "no-store",
+  });
 }

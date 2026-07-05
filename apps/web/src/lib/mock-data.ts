@@ -35,6 +35,7 @@ export type VeriditRecord = {
 
 export type CreditPlan = {
   id: "initial" | "professional" | "enterprise";
+  gatewayPackageName: "basic" | "medium" | "premium";
   name: string;
   records: number;
   price: string;
@@ -155,8 +156,8 @@ export const trustIndicators = [
   },
   {
     label: "Operação segura",
-    value: "Mock verificado",
-    description: "Fluxos simulados enquanto o gateway real evolui.",
+    value: "Fluxo verificado",
+    description: "Processos orientados por rastreabilidade e conferência.",
     icon: ShieldCheck,
   },
 ] as const;
@@ -176,7 +177,7 @@ export const dashboardActivity = [
   },
   {
     title: "Créditos atualizados",
-    description: "Saldo sincronizado com a conta demonstrativa.",
+    description: "Saldo sincronizado com a conta.",
     time: "Ontem, 18:12",
     icon: CircleDot,
   },
@@ -210,12 +211,13 @@ export const chainOfCustody = [
 export const plans: CreditPlan[] = [
   {
     id: "initial",
+    gatewayPackageName: "basic",
     name: "Pacote Inicial",
-    records: 5,
-    price: "R$ 49,90",
-    pricePerRecord: "R$ 9,98 por registro",
+    records: 10,
+    price: "R$ 50,00",
+    pricePerRecord: "R$ 5,00 por registro",
     features: [
-      "5 créditos",
+      "10 créditos",
       "Vídeos e screenshots",
       "Relatórios com hash",
       "Download em ZIP",
@@ -224,13 +226,14 @@ export const plans: CreditPlan[] = [
   },
   {
     id: "professional",
+    gatewayPackageName: "medium",
     name: "Pacote Profissional",
-    records: 15,
-    price: "R$ 129,90",
-    pricePerRecord: "R$ 8,66 por registro",
+    records: 30,
+    price: "R$ 135,00",
+    pricePerRecord: "R$ 4,50 por registro",
     popular: true,
     features: [
-      "15 créditos",
+      "30 créditos",
       "Vídeos e screenshots",
       "Relatórios com hash",
       "Download em ZIP",
@@ -239,12 +242,13 @@ export const plans: CreditPlan[] = [
   },
   {
     id: "enterprise",
+    gatewayPackageName: "premium",
     name: "Pacote Empresarial",
-    records: 50,
-    price: "R$ 349,90",
-    pricePerRecord: "R$ 7,00 por registro",
+    records: 80,
+    price: "R$ 320,00",
+    pricePerRecord: "R$ 4,00 por registro",
     features: [
-      "50 créditos",
+      "80 créditos",
       "Vídeos e screenshots",
       "Relatórios com hash",
       "Download em ZIP",
@@ -320,12 +324,14 @@ export const legalProofPillars = [
   },
   {
     title: "Leitura jurídica",
-    description: "Relatório objetivo com linguagem útil para petições e triagem.",
+    description:
+      "Relatório objetivo com linguagem útil para petições e triagem.",
     icon: Scale,
   },
   {
     title: "Governança",
-    description: "Histórico de ações, responsável e cadeia de custódia visíveis.",
+    description:
+      "Histórico de ações, responsável e cadeia de custódia visíveis.",
     icon: Gavel,
   },
 ] as const;

@@ -57,14 +57,14 @@ export function PlanCard({ plan }: { plan: CreditPlan }) {
       </CardContent>
       <CardFooter className="grid gap-3">
         <Button asChild className="w-full">
-          <Link href="/pagamento">
+          <Link href={`/pagamento?plan=${plan.gatewayPackageName}`}>
             <CreditCard data-icon="inline-start" aria-hidden="true" />
             Comprar créditos
           </Link>
         </Button>
         <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
           <ShieldCheck aria-hidden="true" />
-          Pagamento com confirmação simulada
+          Pagamento com confirmação segura
         </p>
       </CardFooter>
     </Card>

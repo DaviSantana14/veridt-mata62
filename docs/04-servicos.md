@@ -17,6 +17,8 @@ Entrada HTTP para o frontend. Rotas atuais:
 - `GET /billing/health`
 - `GET /billing/packages`
 - `POST /billing/purchases/mock`
+- `POST /billing/purchases`
+- `POST /billing/payments/mercado-pago/webhook`
 - `GET /capture/health`
 - `POST /capture/records/mock`
 
@@ -26,7 +28,9 @@ Responsável por usuários, perfis e recuperação de senha. Publica `identity.u
 
 ## `apps/billing-service`
 
-Responsável por pacotes, créditos e compras. Hoje cria uma compra mock, atualiza saldo local e publica `billing.credit_purchased`.
+Responsável por pacotes, créditos e compras. A compra real em `POST /purchases` cria uma preferência Mercado Pago com `external_reference` apontando para a compra interna. A compra mock continua disponível em `POST /purchases/mock` para Pix demonstrativo e demos locais.
+
+O saldo só é creditado quando o webhook Mercado Pago informa pagamento aprovado. O processamento é idempotente: webhooks duplicados não duplicam créditos nem eventos `billing.credit_purchased`.
 
 ## `apps/capture-service`
 

@@ -1,24 +1,34 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { LoginDto } from './dto/login.dto';
 import type {
   AuthResponse,
   ContentRecordResponse,
+  CreateCardPaymentResponse,
+  CreateCreditPurchaseResponse,
+  CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
   HealthResponse,
   PurchaseCreditsRequest,
+  SimulatePaymentResponse,
+  UserCreditBalanceResponse,
   UserResponse,
 } from '@veridit/contracts';
 import { AppService } from './app.service';
 import type { GatewayHealthResponse } from './app.service';
+import { CreateCardPaymentDto } from './dto/create-card-payment.dto';
+import { CreateCreditPurchaseDto } from './dto/create-credit-purchase.dto';
 import { MockCaptureDto } from './dto/mock-capture.dto';
 import { MockPurchaseDto } from './dto/mock-purchase.dto';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -104,11 +114,75 @@ export class AppController {
     return this.appService.getCreditPackages();
   }
 
+  @Get('billing/users/:userId/credits')
+  getUserCreditBalance(
+    @Param('userId') userId: string,
+  ): Promise<UserCreditBalanceResponse> {
+    return this.appService.getUserCreditBalance(userId);
+  }
+
   @Post('billing/purchases/mock')
   createMockPurchase(
     @Body() body: MockPurchaseDto,
   ): Promise<PurchaseCreditsRequest & { purchaseId: string; status: string }> {
     return this.appService.createMockPurchase(body);
+  }
+
+  @Post('billing/purchases')
+  createCreditPurchase(
+    @Body() body: CreateCreditPurchaseDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ): Promise<CreateCreditPurchaseResponse> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return this.appService.createCreditPurchase(body, idempotencyKey);
+  }
+
+  @Post('billing/purchases/card')
+  createCardPurchase(
+    @Body() body: CreateCreditPurchaseDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ): Promise<CreateEmbeddedCreditPurchaseResponse> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return this.appService.createCardPurchase(body, idempotencyKey);
+  }
+
+  @Post('billing/purchases/:purchaseId/mercado-pago/card-payment')
+  createMercadoPagoCardPayment(
+    @Param('purchaseId') purchaseId: string,
+    @Body() body: CreateCardPaymentDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ): Promise<CreateCardPaymentResponse> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+
+    return this.appService.createMercadoPagoCardPayment(
+      purchaseId,
+      body,
+      idempotencyKey,
+    );
+  }
+
+  @Post('billing/purchases/:purchaseId/simulate-payment')
+  simulatePayment(
+    @Param('purchaseId') purchaseId: string,
+  ): Promise<SimulatePaymentResponse> {
+    return this.appService.simulatePayment(purchaseId);
+  }
+
+  @Post('billing/payments/mercado-pago/webhook')
+  handleMercadoPagoWebhook(
+    @Body() body: Record<string, unknown>,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+    @Query() query: Record<string, unknown>,
+  ): Promise<{ received: boolean; processed: boolean; status?: string }> {
+    return this.appService.handleMercadoPagoWebhook(body, headers, query);
   }
 
   @Get('capture/health')

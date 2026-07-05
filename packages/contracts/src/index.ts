@@ -97,15 +97,83 @@ export interface PasswordResetRequestedEvent {
 export interface CreditPackageResponse {
   id: string;
   name: "basic" | "medium" | "premium";
+  displayName: string;
   credits: number;
   pricePerCreditInCents: number;
   benefits: string;
+}
+
+export interface UserCreditBalanceResponse {
+  userId: string;
+  credits: number;
+  updatedAt?: string;
 }
 
 export interface PurchaseCreditsRequest {
   userId: string;
   packageName: "basic" | "medium" | "premium";
   payerEmail: string;
+}
+
+export type CreditPurchaseStatus = "PENDING" | "PAID" | "CANCELED";
+
+export interface CreateCreditPurchaseRequest {
+  userId: string;
+  packageName: "basic" | "medium" | "premium";
+  payerEmail: string;
+}
+
+export interface CreateCreditPurchaseResponse {
+  purchaseId: string;
+  status: CreditPurchaseStatus;
+  checkoutUrl: string;
+  providerPreferenceId: string;
+}
+
+export interface CreateEmbeddedCreditPurchaseResponse {
+  purchaseId: string;
+  amountInCents: number;
+  credits: number;
+  packageName: "basic" | "medium" | "premium";
+  packageDisplayName: string;
+  pricePerCreditInCents: number;
+  payerEmail: string;
+}
+
+export interface CardPaymentPayerIdentification {
+  type?: string;
+  number?: string;
+}
+
+export interface CreateCardPaymentRequest {
+  token?: string;
+  installments?: number;
+  paymentMethodId: string;
+  issuerId?: string;
+  selectedPaymentMethod?: string;
+  payer: {
+    email: string;
+    identification?: CardPaymentPayerIdentification;
+  };
+}
+
+export interface CreateCardPaymentResponse {
+  purchaseId: string;
+  status: CreditPurchaseStatus;
+  providerPaymentId?: string;
+  pix?: {
+    qrCode?: string;
+    qrCodeBase64?: string;
+    ticketUrl?: string;
+  };
+}
+
+export interface SimulatePaymentResponse {
+  purchaseId: string;
+  status: CreditPurchaseStatus;
+  credits: number;
+  packageName: "basic" | "medium" | "premium";
+  packageDisplayName: string;
 }
 
 export interface CreditPurchaseCreatedEvent {

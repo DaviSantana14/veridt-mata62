@@ -49,6 +49,10 @@
 }
 
 :root {
+  --font-geist-sans:
+    "Segoe UI", "Inter", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-geist-mono:
+    "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --background: #f4f7fb;
   --foreground: #06111f;
   --card: #ffffff;
@@ -226,3 +230,5 @@
     transform: none;
   }
 }
+
+

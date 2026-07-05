@@ -4,14 +4,21 @@ import {
   type AuthResponse,
   type ChangePasswordRequest,
   type ContentRecordResponse,
+  type CreateCardPaymentRequest,
+  type CreateCardPaymentResponse,
+  type CreateCreditPurchaseRequest,
+  type CreateCreditPurchaseResponse,
+  type CreateEmbeddedCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
   type LoginUserRequest,
   type PurchaseCreditsRequest,
   type RegisterUserRequest,
   type ServiceName,
+  type SimulatePaymentResponse,
   type StartCaptureRequest,
   type UpdateUserProfileRequest,
+  type UserCreditBalanceResponse,
   type UserResponse,
 } from '@veridit/contracts';
 import { LoginDto } from './dto/login.dto';
@@ -149,6 +156,14 @@ export class AppService {
     );
   }
 
+  getUserCreditBalance(userId: string): Promise<UserCreditBalanceResponse> {
+    return this.getFromService(
+      'billing-service',
+      this.urls.billing,
+      `/users/${userId}/credits`,
+    );
+  }
+
   createMockPurchase(
     body: PurchaseCreditsRequest,
   ): Promise<PurchaseCreditsRequest & { purchaseId: string; status: string }> {
@@ -157,6 +172,91 @@ export class AppService {
       this.urls.billing,
       '/purchases/mock',
       body,
+    );
+  }
+
+  createCreditPurchase(
+    body: CreateCreditPurchaseRequest,
+    idempotencyKey: string,
+  ): Promise<CreateCreditPurchaseResponse> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      '/purchases',
+      body,
+      {
+        'idempotency-key': idempotencyKey,
+      },
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  createCardPurchase(
+    body: CreateCreditPurchaseRequest,
+    idempotencyKey: string,
+  ): Promise<CreateEmbeddedCreditPurchaseResponse> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      '/purchases/card',
+      body,
+      {
+        'idempotency-key': idempotencyKey,
+      },
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  createMercadoPagoCardPayment(
+    purchaseId: string,
+    body: CreateCardPaymentRequest,
+    idempotencyKey: string,
+  ): Promise<CreateCardPaymentResponse> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      `/purchases/${purchaseId}/mercado-pago/card-payment`,
+      body,
+      {
+        'idempotency-key': idempotencyKey,
+      },
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  simulatePayment(purchaseId: string): Promise<SimulatePaymentResponse> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      `/purchases/${purchaseId}/simulate-payment`,
+      {},
+      {},
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  handleMercadoPagoWebhook(
+    body: Record<string, unknown>,
+    headers: Record<string, string | string[] | undefined>,
+    query: Record<string, unknown>,
+  ): Promise<{ received: boolean; processed: boolean; status?: string }> {
+    return this.postToService(
+      'billing-service',
+      this.urls.billing,
+      '/payments/mercado-pago/webhook',
+      this.normalizeMercadoPagoWebhookPayload(body, query),
+      this.filterMercadoPagoWebhookHeaders(headers),
+      {
+        preserveClientErrors: true,
+      },
     );
   }
 
@@ -186,14 +286,22 @@ export class AppService {
     baseUrl: string,
     path: string,
     body: object,
+    headers: Record<string, string> = {},
+    options: { preserveClientErrors?: boolean } = {},
   ): Promise<T> {
-    return this.request<T>(service, `${baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
+    return this.request<T>(
+      service,
+      `${baseUrl}${path}`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+      options,
+    );
   }
 
   private patchToService<T>(
@@ -215,12 +323,24 @@ export class AppService {
     service: ServiceName,
     url: string,
     init?: RequestInit,
+    options: { preserveClientErrors?: boolean } = {},
   ): Promise<T> {
     try {
       const response = await fetch(url, init);
       const payload: unknown = await response.json();
 
       if (!response.ok) {
+        if (
+          options.preserveClientErrors &&
+          response.status >= 400 &&
+          response.status < 500
+        ) {
+          throw new HttpException(
+            this.toHttpExceptionResponse(payload),
+            response.status,
+          );
+        }
+
         throw new HttpException(
           {
             service,
@@ -243,5 +363,56 @@ export class AppService {
         message,
       });
     }
+  }
+
+  private toHttpExceptionResponse(
+    payload: unknown,
+  ): string | Record<string, unknown> {
+    if (typeof payload === 'string') {
+      return payload;
+    }
+
+    if (
+      typeof payload === 'object' &&
+      payload !== null &&
+      !Array.isArray(payload)
+    ) {
+      return payload as Record<string, unknown>;
+    }
+
+    return { payload };
+  }
+
+  private filterMercadoPagoWebhookHeaders(
+    headers: Record<string, string | string[] | undefined>,
+  ): Record<string, string> {
+    const forwardedHeaders: Record<string, string> = {};
+
+    for (const name of ['x-signature', 'x-request-id']) {
+      const value = headers[name];
+
+      if (typeof value === 'string' && value.trim()) {
+        forwardedHeaders[name] = value;
+      }
+    }
+
+    return forwardedHeaders;
+  }
+
+  private normalizeMercadoPagoWebhookPayload(
+    body: Record<string, unknown>,
+    query: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const data = body.data ?? query.data ?? this.toDataObject(query['data.id']);
+
+    return {
+      ...query,
+      ...body,
+      ...(data ? { data } : {}),
+    };
+  }
+
+  private toDataObject(dataId: unknown): { id: unknown } | undefined {
+    return dataId ? { id: dataId } : undefined;
   }
 }

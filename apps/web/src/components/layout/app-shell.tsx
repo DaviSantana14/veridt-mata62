@@ -7,6 +7,7 @@ import {
   Menu,
   Plus,
   ShieldCheck,
+  Sparkles,
   UserRound,
   Video,
 } from "lucide-react";
@@ -32,7 +33,7 @@ import { VeriditLogo } from "@/components/layout/veridit-logo";
 import { SessionUserIdentity } from "@/components/layout/session-user";
 import { UserMenu } from "@/components/layout/user-menu";
 import { AuthBoundary } from "@/components/veridit/auth-boundary";
-import { currentUser } from "@/lib/mock-data";
+import { CreditBalanceText } from "@/components/veridit/credit-balance";
 import { cn } from "@/lib/utils";
 
 type ActiveRoute = "dashboard" | "capture" | "credits" | "profile";
@@ -44,35 +45,35 @@ const navItems: Array<{
   description: string;
   icon: typeof LayoutDashboard;
 }> = [
-  {
-    href: "/dashboard",
-    label: "Dashboard",
-    active: "dashboard",
-    description: "Registros, status e atividade",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/captura",
-    label: "Nova Captura",
-    active: "capture",
-    description: "Registrar evidência web",
-    icon: Video,
-  },
-  {
-    href: "/creditos",
-    label: "Créditos",
-    active: "credits",
-    description: "Planos e saldo disponível",
-    icon: CreditCard,
-  },
-  {
-    href: "/perfil",
-    label: "Perfil",
-    active: "profile",
-    description: "Conta, segurança e preferências",
-    icon: UserRound,
-  },
-];
+    {
+      href: "/dashboard",
+      label: "Dashboard",
+      active: "dashboard",
+      description: "Registros, status e atividade",
+      icon: LayoutDashboard,
+    },
+    {
+      href: "/captura",
+      label: "Nova Captura",
+      active: "capture",
+      description: "Registrar evidência web",
+      icon: Video,
+    },
+    {
+      href: "/creditos",
+      label: "Créditos",
+      active: "credits",
+      description: "Planos e saldo disponível",
+      icon: CreditCard,
+    },
+    {
+      href: "/perfil",
+      label: "Perfil",
+      active: "profile",
+      description: "Conta, segurança e preferências",
+      icon: UserRound,
+    },
+  ];
 
 function NavigationList({
   active,
@@ -101,15 +102,22 @@ function NavigationList({
                   compact && "justify-center px-0",
                 )}
               >
-                <Link href={item.href} aria-current={selected ? "page" : undefined}>
+                <Link
+                  href={item.href}
+                  aria-current={selected ? "page" : undefined}
+                >
                   <Icon aria-hidden="true" />
                   {compact ? null : (
                     <span className="grid leading-tight">
-                      <span className="text-sm font-semibold">{item.label}</span>
+                      <span className="text-sm font-semibold">
+                        {item.label}
+                      </span>
                       <span
                         className={cn(
                           "text-xs",
-                          selected ? "text-primary-foreground/75" : "text-muted-foreground",
+                          selected
+                            ? "text-primary-foreground/75"
+                            : "text-muted-foreground",
                         )}
                       >
                         {item.description}
@@ -119,7 +127,9 @@ function NavigationList({
                 </Link>
               </Button>
             </TooltipTrigger>
-            {compact ? <TooltipContent side="right">{item.label}</TooltipContent> : null}
+            {compact ? (
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            ) : null}
           </Tooltip>
         );
       })}
@@ -131,18 +141,21 @@ function SidebarNav({ active }: { active: ActiveRoute }) {
   return (
     <aside className="hidden min-h-dvh w-[288px] shrink-0 border-r bg-card/90 px-4 py-5 shadow-[8px_0_30px_rgb(15_23_42/0.04)] backdrop-blur xl:block">
       <div className="sticky top-5 flex h-[calc(100dvh-2.5rem)] flex-col">
-        <VeriditLogo />
+        <VeriditLogo href="/dashboard" />
         <div className="mt-7">
           <NavigationList active={active} />
         </div>
 
         <div className="mt-6 rounded-2xl border bg-secondary/55 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <FileCheck2 className="text-[color:var(--evidence)]" aria-hidden="true" />
+            <FileCheck2
+              className="text-[color:var(--evidence)]"
+              aria-hidden="true"
+            />
             Cofre de evidências
           </div>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            {currentUser.credits} créditos ativos para capturas com relatório e hash.
+            <CreditBalanceText /> ativos para capturas com relatório e hash.
           </p>
           <Button asChild className="mt-4 w-full">
             <Link href="/captura">
@@ -164,23 +177,32 @@ function MobileNav({ active }: { active: ActiveRoute }) {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="outline" size="icon" className="xl:hidden" aria-label="Abrir menu">
+        <Button
+          variant="outline"
+          size="icon"
+          className="xl:hidden"
+          aria-label="Abrir menu"
+        >
           <Menu aria-hidden="true" />
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-[316px] p-0">
         <SheetHeader className="sr-only">
           <SheetTitle>Navegação Veridit</SheetTitle>
-          <SheetDescription>Menu principal do sistema Veridit.</SheetDescription>
+          <SheetDescription>
+            Menu principal do sistema Veridit.
+          </SheetDescription>
         </SheetHeader>
         <ScrollArea className="h-dvh">
           <div className="flex min-h-dvh flex-col gap-6 p-5">
-            <VeriditLogo />
+            <VeriditLogo href="/dashboard" />
             <NavigationList active={active} />
             <Separator />
             <div className="rounded-2xl border bg-secondary/65 p-4">
               <p className="text-sm font-semibold">Saldo disponível</p>
-              <p className="mt-1 text-2xl font-bold">{currentUser.credits} créditos</p>
+              <p className="mt-1 text-2xl font-bold">
+                <CreditBalanceText />
+              </p>
               <Button asChild className="mt-4 w-full">
                 <Link href="/captura">
                   <Plus data-icon="inline-start" aria-hidden="true" />
@@ -213,7 +235,7 @@ export function ProductShell({
                 <div className="flex min-w-0 items-center gap-3">
                   <MobileNav active={active} />
                   <div className="xl:hidden">
-                    <VeriditLogo className="min-h-10 text-lg" />
+                    <VeriditLogo href="/dashboard" className="min-h-10 text-lg" />
                   </div>
                   {active === "dashboard" ? (
                     <Badge
@@ -225,11 +247,13 @@ export function ProductShell({
                   ) : null}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Badge className="hidden rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)] sm:inline-flex">
-                    <ShieldCheck aria-hidden="true" />
-                    {currentUser.credits} créditos
-                  </Badge>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-br from-teal-700/10 to-primary/10 border border-teal-700/20 hover:from-teal-700/15 hover:to-primary/15 hover:border-teal-700/30 transition-colors duration-200">
+                    <Sparkles className="w-4 h-4 text-[color:var(--evidence)] flex-shrink-0" aria-hidden="true" />
+                    <span className="text-[13px] font-semibold text-foreground whitespace-nowrap">
+                      <CreditBalanceText />
+                    </span>
+                  </div>
                   <UserMenu />
                 </div>
               </div>
