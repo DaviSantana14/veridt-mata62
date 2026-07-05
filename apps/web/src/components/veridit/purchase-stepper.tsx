@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { Check } from "lucide-react";
 
 export type StepperStep = {
   label: string;
@@ -17,9 +18,12 @@ export function PurchaseStepper({ steps, activeStep, className }: StepperProps) 
   return (
     <nav
       aria-label="Progresso da compra"
-      className={cn("purchase-stepper", className)}
+      className={cn(
+        "px-6 py-4 rounded-2xl bg-background/50 backdrop-blur-xl border shadow-sm",
+        className,
+      )}
     >
-      <ol className="purchase-stepper-list">
+      <ol className="flex items-center m-0 p-0">
         {steps.map((step, index) => {
           const stepNumber = index + 1;
           const isActive = stepNumber === activeStep;
@@ -30,66 +34,59 @@ export function PurchaseStepper({ steps, activeStep, className }: StepperProps) 
             <li
               key={step.label}
               className={cn(
-                "purchase-stepper-item",
-                isActive && "purchase-stepper-item--active",
-                isCompleted && "purchase-stepper-item--completed",
+                "flex items-center min-w-0",
+                !isLast ? "flex-1" : "",
               )}
             >
-              <div className="purchase-stepper-indicator">
+              <div className="flex items-center gap-3">
                 <span
                   className={cn(
-                    "purchase-stepper-circle",
-                    isActive && "purchase-stepper-circle--active",
-                    isCompleted && "purchase-stepper-circle--completed",
+                    "flex items-center justify-center w-9 h-9 rounded-full border-2 text-[13px] font-semibold flex-shrink-0 transition-all duration-300",
+                    isActive
+                      ? "bg-primary border-primary text-primary-foreground shadow-[0_0_0_4px_rgba(31,95,191,0.15)]"
+                      : isCompleted
+                        ? "bg-green-600 border-green-600 text-white"
+                        : "bg-background border-border text-muted-foreground",
                   )}
                   aria-current={isActive ? "step" : undefined}
                 >
                   {isCompleted ? (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 14 14"
-                      fill="none"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M11.5 3.5L5.5 10.5L2.5 7.5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
+                    <Check className="w-4 h-4" strokeWidth={3} />
                   ) : (
-                    <span className="purchase-stepper-number">{stepNumber}</span>
+                    <span className="leading-none">{stepNumber}</span>
                   )}
                 </span>
-                {!isLast && (
+                
+                <div className="hidden sm:flex flex-col min-w-0">
                   <span
                     className={cn(
-                      "purchase-stepper-connector",
-                      isCompleted && "purchase-stepper-connector--completed",
+                      "text-[13px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis transition-colors duration-300",
+                      isActive
+                        ? "text-primary"
+                        : isCompleted
+                          ? "text-green-600"
+                          : "text-muted-foreground",
                     )}
-                    aria-hidden="true"
-                  />
-                )}
+                  >
+                    {step.label}
+                  </span>
+                  {step.description && (
+                    <span className="text-[11px] text-muted-foreground/70 mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
+                      {step.description}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="purchase-stepper-label-group">
+
+              {!isLast && (
                 <span
                   className={cn(
-                    "purchase-stepper-label",
-                    isActive && "purchase-stepper-label--active",
-                    isCompleted && "purchase-stepper-label--completed",
+                    "flex-1 h-0.5 mx-4 lg:mx-6 min-w-[1.5rem] rounded-full transition-colors duration-300",
+                    isCompleted ? "bg-green-600" : "bg-border",
                   )}
-                >
-                  {step.label}
-                </span>
-                {step.description && (
-                  <span className="purchase-stepper-description">
-                    {step.description}
-                  </span>
-                )}
-              </div>
+                  aria-hidden="true"
+                />
+              )}
             </li>
           );
         })}

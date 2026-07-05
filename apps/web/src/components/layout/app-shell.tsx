@@ -248,9 +248,9 @@ export function ProductShell({
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <div className="header-credit-pill">
-                    <Sparkles className="header-credit-icon" aria-hidden="true" />
-                    <span className="header-credit-value">
+                  <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-br from-teal-700/10 to-primary/10 border border-teal-700/20 hover:from-teal-700/15 hover:to-primary/15 hover:border-teal-700/30 transition-colors duration-200">
+                    <Sparkles className="w-4 h-4 text-[color:var(--evidence)] flex-shrink-0" aria-hidden="true" />
+                    <span className="text-[13px] font-semibold text-foreground whitespace-nowrap">
                       <CreditBalanceText />
                     </span>
                   </div>

@@ -35,8 +35,6 @@ export default async function CreditsPage() {
     ? gatewayPlans.data.map(toCreditPlan)
     : [];
   const gatewayStatus = gatewayPlans.ok
-    ? "Planos sincronizados com o gateway."
-    : "Não foi possível carregar os pacotes de crédito agora.";
 
   return (
     <AppShell active="credits">
@@ -48,33 +46,42 @@ export default async function CreditsPage() {
 
         {/* Hero section */}
         <section
-          className="credits-hero reveal-up"
+          className="relative rounded-[1.25rem] overflow-hidden bg-gradient-to-br from-[#0e4a8a] via-[#1f5fbf] to-[#0f766e] shadow-[0_2px_4px_rgb(15_23_42/0.08),0_16px_48px_rgb(31_95_191/0.16),inset_0_1px_0_rgb(255_255_255/0.08)] reveal-up"
           style={{ animationDelay: "60ms" }}
         >
-          <div className="credits-hero-content">
-            <div className="credits-hero-left">
-              <div className="credits-hero-eyebrow">
-                <Zap aria-hidden="true" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_80%_at_90%_30%,rgba(15,118,110,0.3),transparent),radial-gradient(circle_at_10%_90%,rgba(31,95,191,0.2),transparent_50%)] pointer-events-none" />
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: "linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.025) 1px, transparent 1px)",
+              backgroundSize: "32px 32px",
+              maskImage: "radial-gradient(ellipse 80% 60% at 50% 50%, black 20%, transparent 80%)"
+            }}
+          />
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8 p-8 md:p-10">
+            <div className="flex-1 min-w-0">
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[#7dd3c0] mb-3">
+                <Zap className="w-3.5 h-3.5" aria-hidden="true" />
                 Créditos
               </div>
-              <h1 className="credits-hero-title">
+              <h1 className="text-2xl sm:text-[1.875rem] font-bold text-[#f0f6ff] leading-tight tracking-[-0.02em] max-w-[28ch]">
                 Escolha o pacote ideal para suas evidências
               </h1>
-              <p className="credits-hero-subtitle">
+              <p className="mt-2 text-[0.9rem] text-[#dcebff]/65 leading-[1.6] max-w-[46ch]">
                 Planos diretos para capturas avulsas, rotinas profissionais e
                 operações com volume maior.
               </p>
             </div>
-            <div className="credits-hero-right">
-              <div className="credits-hero-balance-card">
-                <div className="credits-hero-balance-header">
-                  <Sparkles aria-hidden="true" />
+            <div className="flex-shrink-0">
+              <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-5 sm:px-6 min-w-[200px]">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.06em] text-[#dcebff]/60">
+                  <Sparkles className="w-3.5 h-3.5 text-[#7dd3c0]" aria-hidden="true" />
                   <span>Saldo atual</span>
                 </div>
-                <div className="credits-hero-balance-amount">
+                <div className="text-[2rem] font-extrabold text-white leading-[1.2] tracking-[-0.03em] mt-1">
                   <CreditBalanceText />
                 </div>
-                <p className="credits-hero-balance-note">
+                <p className="text-xs text-[#dcebff]/45 mt-1">
                   disponíveis para novas capturas
                 </p>
               </div>
@@ -84,15 +91,15 @@ export default async function CreditsPage() {
 
         {/* Security badge */}
         <div
-          className="credits-security-bar reveal-up"
+          className="flex items-center gap-3 px-5 py-3.5 rounded-[0.875rem] border border-primary/10 bg-gradient-to-br from-primary/5 to-teal-700/5 reveal-up"
           style={{ animationDelay: "120ms" }}
         >
-          <ShieldCheck aria-hidden="true" />
+          <ShieldCheck className="w-5 h-5 text-primary flex-shrink-0" aria-hidden="true" />
           <div>
-            <p className="credits-security-title">
+            <p className="text-[13px] font-semibold text-foreground">
               Compra segura com Mercado Pago
             </p>
-            <p className="credits-security-desc">{gatewayStatus}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{gatewayStatus}</p>
           </div>
         </div>
 
@@ -136,9 +143,6 @@ export default async function CreditsPage() {
             </CardHeader>
             <CardContent className="grid gap-4 text-sm text-muted-foreground md:grid-cols-3">
               <p>1 crédito por captura concluída, seja vídeo ou screenshot.</p>
-              <p>
-                Relatório, hash e pacote ZIP permanecem vinculados ao registro.
-              </p>
               <p>Pagamento por cartão ou Pix integrado ao Mercado Pago.</p>
             </CardContent>
           </Card>

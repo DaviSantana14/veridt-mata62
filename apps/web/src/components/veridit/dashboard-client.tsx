@@ -83,45 +83,57 @@ export function DashboardClient() {
   return (
     <div className="grid gap-7">
       {/* Hero greeting + credit banner */}
-      <section className="credit-hero reveal-up" style={{ animationDelay: "0ms" }}>
-        <div className="credit-hero-content">
-          <div className="credit-hero-left">
-            <p className="credit-hero-greeting">
+      <section 
+        className="relative rounded-[1.25rem] overflow-hidden bg-gradient-to-br from-[#0e4a8a] via-[#1f5fbf] to-[#0f766e] shadow-[0_2px_4px_rgb(15_23_42/0.08),0_12px_40px_rgb(31_95_191/0.18),inset_0_1px_0_rgb(255_255_255/0.08)] reveal-up" 
+        style={{ animationDelay: "0ms" }}
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_80%_20%,rgba(255,255,255,0.06),transparent),radial-gradient(circle_at_20%_80%,rgba(15,118,110,0.25),transparent_50%)] pointer-events-none" />
+        <div 
+          className="absolute inset-0 pointer-events-none" 
+          style={{
+            backgroundImage: "linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+            maskImage: "linear-gradient(to right, transparent, black 30%, black 70%, transparent)"
+          }}
+        />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 p-7 md:p-8 md:px-9">
+          <div className="flex-1 min-w-0">
+            <p className="text-2xl sm:text-[1.75rem] font-bold text-[#f0f6ff] leading-[1.2] tracking-[-0.02em]">
               {getTimeGreeting()}, {firstName}
             </p>
-            <p className="credit-hero-subtitle">
+            <p className="mt-1.5 text-[0.9rem] text-[#dcebff]/70 leading-[1.5]">
               Suas evidências estão organizadas para auditoria.
             </p>
           </div>
-          <div className="credit-hero-right">
-            <div className="credit-hero-balance">
-              <div className="credit-hero-balance-icon">
-                <Sparkles aria-hidden="true" />
+          <div className="flex flex-col md:items-end flex-shrink-0 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-11 h-11 rounded-[0.875rem] bg-white/12 backdrop-blur-md text-[#7dd3c0] shadow-[0_0_20px_rgba(125,211,192,0.15)]">
+                <Sparkles className="w-5 h-5" aria-hidden="true" />
               </div>
-              <div className="credit-hero-balance-info">
-                <span className="credit-hero-balance-label">Saldo disponível</span>
-                <span className="credit-hero-balance-value">
+              <div className="flex flex-col">
+                <span className="text-xs font-medium uppercase tracking-[0.06em] text-[#dcebff]/60">Saldo disponível</span>
+                <span className="text-[2rem] font-extrabold text-white leading-[1.1] tracking-[-0.03em] flex items-baseline gap-1.5">
                   {creditValue === null ? (
-                    <span className="credit-hero-loading">...</span>
+                    <span className="text-2xl text-[#dcebff]/40">...</span>
                   ) : (
                     <>
                       {creditValue}
-                      <span className="credit-hero-balance-unit">créditos</span>
+                      <span className="text-sm font-medium text-[#dcebff]/55">créditos</span>
                     </>
                   )}
                 </span>
               </div>
             </div>
-            <div className="credit-hero-actions">
-              <Button asChild size="sm" variant="secondary" className="credit-hero-buy-btn">
+            <div className="flex gap-2">
+              <Button asChild size="sm" variant="secondary" className="bg-white/12 text-[#f0f6ff] border border-white/15 backdrop-blur-sm hover:bg-white/20 hover:border-white/30 transition-colors">
                 <Link href="/creditos">
-                  <Zap aria-hidden="true" />
+                  <Zap className="mr-2 h-4 w-4" aria-hidden="true" />
                   Comprar créditos
                 </Link>
               </Button>
-              <Button asChild size="sm" className="credit-hero-capture-btn">
+              <Button asChild size="sm" className="shadow-[0_0_16px_rgba(255,255,255,0.1)]">
                 <Link href="/captura">
-                  <Plus data-icon="inline-start" aria-hidden="true" />
+                  <Plus className="mr-2 h-4 w-4" data-icon="inline-start" aria-hidden="true" />
                   Nova Captura
                 </Link>
               </Button>
