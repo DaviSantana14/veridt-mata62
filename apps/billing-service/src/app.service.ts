@@ -16,6 +16,7 @@ import {
 } from './generated/prisma/client';
 import { BillingEventsPublisher } from './messaging/billing-events.publisher';
 import { PAYMENT_PROVIDER } from './payments/payment-provider.interface';
+import { verifyMercadoPagoWebhookSignature } from './payments/mercado-pago-webhook-signature';
 import { PrismaService } from './prisma/prisma.service';
 
 type PackageDefinition = CreditPackageResponse & {
@@ -70,6 +71,11 @@ export type MercadoPagoWebhookResponse = {
   received: boolean;
   processed: boolean;
   status?: string;
+};
+
+export type MercadoPagoWebhookHeaders = {
+  xSignature?: string;
+  xRequestId?: string;
 };
 
 const PACKAGE_DEFINITIONS: Record<
@@ -247,6 +253,7 @@ export class AppService {
 
   async handleMercadoPagoWebhook(
     payload: MercadoPagoWebhookPayload,
+    headers: MercadoPagoWebhookHeaders = {},
   ): Promise<MercadoPagoWebhookResponse> {
     if (!this.isPaymentNotification(payload)) {
       return {
@@ -263,6 +270,8 @@ export class AppService {
         processed: false,
       };
     }
+
+    this.validateMercadoPagoWebhookSignature(paymentId, headers);
 
     const payment = await this.paymentProvider.getPayment(paymentId);
 
@@ -563,5 +572,23 @@ export class AppService {
     packageName: CreditPackageName,
   ): PurchaseCreditsRequest['packageName'] {
     return packageName.toLowerCase() as PurchaseCreditsRequest['packageName'];
+  }
+
+  private validateMercadoPagoWebhookSignature(
+    dataId: string,
+    headers: MercadoPagoWebhookHeaders,
+  ): void {
+    const secret = process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim();
+
+    if (!secret) {
+      return;
+    }
+
+    verifyMercadoPagoWebhookSignature({
+      dataId,
+      requestId: headers.xRequestId,
+      signature: headers.xSignature,
+      secret,
+    });
   }
 }

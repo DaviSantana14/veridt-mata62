@@ -58,11 +58,27 @@ export class AppController {
   handleMercadoPagoWebhook(
     @Body() body: MercadoPagoWebhookPayload,
     @Query() query: MercadoPagoWebhookPayload,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ): Promise<MercadoPagoWebhookResponse> {
-    return this.appService.handleMercadoPagoWebhook({
-      ...query,
-      ...body,
-      data: body.data ?? query.data,
-    });
+    return this.appService.handleMercadoPagoWebhook(
+      {
+        ...query,
+        ...body,
+        data: body.data ?? query.data,
+      },
+      {
+        xSignature: getHeader(headers, 'x-signature'),
+        xRequestId: getHeader(headers, 'x-request-id'),
+      },
+    );
   }
+}
+
+function getHeader(
+  headers: Record<string, string | string[] | undefined>,
+  name: string,
+): string | undefined {
+  const value = headers[name];
+
+  return typeof value === 'string' ? value : undefined;
 }

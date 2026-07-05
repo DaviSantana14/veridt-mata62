@@ -1,4 +1,5 @@
-import { ConflictException } from '@nestjs/common';
+import { createHmac } from 'crypto';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { PurchaseCreditsRequest } from '@veridit/contracts';
 import { AppService } from './app.service';
@@ -87,6 +88,7 @@ describe('AppService Mercado Pago billing flow', () => {
   let eventsPublisher: EventsPublisherMock;
 
   beforeEach(async () => {
+    delete process.env.MERCADO_PAGO_WEBHOOK_SECRET;
     prisma = createPrismaMock();
     paymentProvider = createPaymentProviderMock();
     eventsPublisher = createEventsPublisherMock();
@@ -276,6 +278,105 @@ describe('AppService Mercado Pago billing flow', () => {
     expect(paymentProvider.getPayment).not.toHaveBeenCalled();
   });
 
+  it('processes Mercado Pago webhooks without signature when no secret is configured', async () => {
+    paymentProvider.getPayment.mockResolvedValue({
+      providerPaymentId: 'payment-1',
+      status: 'pending',
+      externalReference: 'purchase-1',
+    });
+    prisma.creditPurchase.findUnique.mockResolvedValue(makePurchase());
+
+    const result = await service.handleMercadoPagoWebhook({
+      type: 'payment',
+      data: {
+        id: 'payment-1',
+      },
+    });
+
+    expect(paymentProvider.getPayment).toHaveBeenCalledWith('payment-1');
+    expect(result).toEqual({
+      received: true,
+      processed: false,
+      status: 'pending',
+    });
+  });
+
+  it('rejects Mercado Pago webhook when secret is configured and signature is missing', async () => {
+    process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'webhook-secret';
+
+    await expect(
+      service.handleMercadoPagoWebhook(
+        {
+          type: 'payment',
+          data: {
+            id: 'payment-1',
+          },
+        },
+        {
+          xRequestId: 'request-1',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(paymentProvider.getPayment).not.toHaveBeenCalled();
+  });
+
+  it('rejects Mercado Pago webhook with invalid signature', async () => {
+    process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'webhook-secret';
+
+    await expect(
+      service.handleMercadoPagoWebhook(
+        {
+          type: 'payment',
+          data: {
+            id: 'payment-1',
+          },
+        },
+        {
+          xSignature: 'ts=1,v1=invalid',
+          xRequestId: 'request-1',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(paymentProvider.getPayment).not.toHaveBeenCalled();
+  });
+
+  it('accepts Mercado Pago webhook with valid HMAC signature', async () => {
+    process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'webhook-secret';
+    const signature = signMercadoPagoWebhook({
+      dataId: 'payment-1',
+      requestId: 'request-1',
+      timestamp: '123',
+      secret: 'webhook-secret',
+    });
+
+    paymentProvider.getPayment.mockResolvedValue({
+      providerPaymentId: 'payment-1',
+      status: 'pending',
+      externalReference: 'purchase-1',
+    });
+    prisma.creditPurchase.findUnique.mockResolvedValue(makePurchase());
+
+    const result = await service.handleMercadoPagoWebhook(
+      {
+        type: 'payment',
+        data: {
+          id: 'payment-1',
+        },
+      },
+      {
+        xSignature: signature,
+        xRequestId: 'request-1',
+      },
+    );
+
+    expect(paymentProvider.getPayment).toHaveBeenCalledWith('payment-1');
+    expect(result).toEqual({
+      received: true,
+      processed: false,
+      status: 'pending',
+    });
+  });
+
   it('confirms an approved pending payment once and publishes the event', async () => {
     const approvedAt = new Date('2026-05-29T12:30:00.000Z');
     const paidPurchase = makePurchase({
@@ -428,3 +529,22 @@ describe('AppService Mercado Pago billing flow', () => {
     });
   });
 });
+
+function signMercadoPagoWebhook({
+  dataId,
+  requestId,
+  timestamp,
+  secret,
+}: {
+  dataId: string;
+  requestId: string;
+  timestamp: string;
+  secret: string;
+}): string {
+  const manifest = `id:${dataId};request-id:${requestId};ts:${timestamp};`;
+  const signature = createHmac('sha256', secret)
+    .update(manifest)
+    .digest('hex');
+
+  return `ts=${timestamp},v1=${signature}`;
+}
