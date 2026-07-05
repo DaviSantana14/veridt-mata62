@@ -68,6 +68,28 @@ export function createMockPurchase(payload: {
   );
 }
 
+export function createCreditPurchase(
+  payload: {
+    userId: string;
+    packageName: "basic" | "medium" | "premium";
+    payerEmail: string;
+  },
+  idempotencyKey: string,
+) {
+  return requestGateway<{
+    purchaseId: string;
+    status: "PENDING" | "PAID" | "CANCELED";
+    checkoutUrl: string;
+    providerPreferenceId: string;
+  }>("/billing/purchases", {
+    method: "POST",
+    headers: {
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function loginUser(payload: { email: string; password: string }) {
   return requestGateway<{
     accessToken: string;

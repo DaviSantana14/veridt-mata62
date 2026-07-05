@@ -30,7 +30,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { createMockPurchase } from "@/lib/gateway";
+import { createCreditPurchase, createMockPurchase } from "@/lib/gateway";
 import { currentUser, plans } from "@/lib/mock-data";
 
 const pixCode =
@@ -41,24 +41,50 @@ const selectedPlan = plans[1];
 export function PaymentClient() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"pix" | "mercado-pago">(
+    "pix",
+  );
 
   async function confirmPayment() {
     setPending(true);
+
+    if (paymentMethod === "mercado-pago") {
+      const result = await createCreditPurchase(
+        {
+          userId: "user-demo-001",
+          packageName: selectedPlan.gatewayPackageName,
+          payerEmail: currentUser.email,
+        },
+        crypto.randomUUID(),
+      );
+
+      setPending(false);
+
+      if (result.ok) {
+        window.location.assign(result.data.checkoutUrl);
+        return;
+      }
+
+      toast.error("Não foi possível abrir o checkout sandbox.", {
+        description: result.message,
+      });
+      return;
+    }
+
     const result = await createMockPurchase({
       userId: "user-demo-001",
-      packageName: "medium",
+      packageName: selectedPlan.gatewayPackageName,
       payerEmail: currentUser.email,
     });
     setPending(false);
 
     if (result.ok) {
-      toast.success("Pagamento confirmado.");
+      toast.success("Pix simulado confirmado.");
     } else {
-      toast.warning("Confirmação simulada. API Gateway indisponível.", {
+      toast.warning("Confirmação Pix simulada. API Gateway indisponível.", {
         description: result.message,
       });
     }
-
     router.push("/dashboard");
   }
 
@@ -73,7 +99,7 @@ export function PaymentClient() {
         <CardHeader>
           <CardTitle>Forma de pagamento</CardTitle>
           <CardDescription>
-            Selecione Pix ou Mercado Pago para simular a confirmação.
+            Selecione Pix demonstrativo ou Mercado Pago sandbox.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6">
@@ -81,11 +107,17 @@ export function PaymentClient() {
             <LockKeyhole aria-hidden="true" />
             <AlertTitle>Checkout demonstrativo seguro</AlertTitle>
             <AlertDescription>
-              A tela chama <span className="font-mono">/billing/purchases/mock</span> e usa confirmação simulada se o gateway estiver indisponível.
+              Pix usa confirmação simulada. Mercado Pago cria uma preferência real em sandbox.
             </AlertDescription>
           </Alert>
 
-          <Tabs defaultValue="pix" className="w-full">
+          <Tabs
+            value={paymentMethod}
+            onValueChange={(value) =>
+              setPaymentMethod(value as "pix" | "mercado-pago")
+            }
+            className="w-full"
+          >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="pix">
                 <QrCode data-icon="inline-start" aria-hidden="true" />
@@ -135,7 +167,7 @@ export function PaymentClient() {
                   <CreditCard className="mx-auto size-12 text-primary" aria-hidden="true" />
                   <p className="mt-4 font-semibold">Mercado Pago</p>
                   <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
-                    Simule a criação de preferência e registre a compra no gateway mock.
+                    Abra o checkout sandbox do Mercado Pago para concluir a compra.
                   </p>
                 </div>
               </div>
@@ -148,7 +180,9 @@ export function PaymentClient() {
             ) : (
               <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
             )}
-            Confirmar pagamento simulado
+            {paymentMethod === "mercado-pago"
+              ? "Ir para checkout sandbox"
+              : "Confirmar Pix simulado"}
           </Button>
         </CardContent>
       </Card>
@@ -179,7 +213,7 @@ export function PaymentClient() {
             </p>
             <p className="flex items-center gap-2">
               <LockKeyhole className="text-primary" aria-hidden="true" />
-              Nenhum dado sensível real é processado nesta simulação.
+              Use somente usuários e meios de pagamento de teste no sandbox.
             </p>
           </div>
         </CardContent>

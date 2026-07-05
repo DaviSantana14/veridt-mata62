@@ -37,7 +37,7 @@ export default async function CreditsPage() {
 
         <Alert className="border-primary/20 bg-primary/5">
           <ShieldCheck aria-hidden="true" />
-          <AlertTitle>Compra segura com simulação de confirmação</AlertTitle>
+          <AlertTitle>Compra segura com sandbox</AlertTitle>
           <AlertDescription>{gatewayStatus}</AlertDescription>
         </Alert>
 
@@ -57,7 +57,7 @@ export default async function CreditsPage() {
           <CardContent className="grid gap-4 text-sm text-muted-foreground md:grid-cols-3">
             <p>1 crédito por captura concluída, seja vídeo ou screenshot.</p>
             <p>Relatório, hash e pacote ZIP permanecem vinculados ao registro.</p>
-            <p>Pagamento via Pix ou Mercado Pago no fluxo demonstrativo atual.</p>
+            <p>Pagamento via Pix demonstrativo ou Mercado Pago sandbox.</p>
           </CardContent>
         </Card>
       </div>

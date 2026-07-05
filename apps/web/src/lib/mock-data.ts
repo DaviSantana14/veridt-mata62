@@ -35,6 +35,7 @@ export type VeriditRecord = {
 
 export type CreditPlan = {
   id: "initial" | "professional" | "enterprise";
+  gatewayPackageName: "basic" | "medium" | "premium";
   name: string;
   records: number;
   price: string;
@@ -210,6 +211,7 @@ export const chainOfCustody = [
 export const plans: CreditPlan[] = [
   {
     id: "initial",
+    gatewayPackageName: "basic",
     name: "Pacote Inicial",
     records: 5,
     price: "R$ 49,90",
@@ -224,6 +226,7 @@ export const plans: CreditPlan[] = [
   },
   {
     id: "professional",
+    gatewayPackageName: "medium",
     name: "Pacote Profissional",
     records: 15,
     price: "R$ 129,90",
@@ -239,6 +242,7 @@ export const plans: CreditPlan[] = [
   },
   {
     id: "enterprise",
+    gatewayPackageName: "premium",
     name: "Pacote Empresarial",
     records: 50,
     price: "R$ 349,90",
