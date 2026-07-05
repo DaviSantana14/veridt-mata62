@@ -61,6 +61,7 @@ function createPrismaMock() {
       updateMany: jest.fn(),
     },
     userCreditBalance: {
+      findUnique: jest.fn(),
       upsert: jest.fn(),
     },
     $transaction: jest.fn(),
@@ -218,6 +219,36 @@ describe('AppService Mercado Pago billing flow', () => {
         benefits: 'Pacote premium para alto volume de registros.',
       },
     ]);
+  });
+
+  it('returns zero credits when the user has no persisted balance', async () => {
+    prisma.userCreditBalance.findUnique.mockResolvedValue(null);
+
+    await expect(service.getUserCreditBalance('user-1')).resolves.toEqual({
+      userId: 'user-1',
+      credits: 0,
+      updatedAt: undefined,
+    });
+
+    expect(prisma.userCreditBalance.findUnique).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+      },
+    });
+  });
+
+  it('returns the persisted user credit balance', async () => {
+    prisma.userCreditBalance.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      credits: 42,
+      updatedAt: new Date('2026-05-29T12:00:00.000Z'),
+    });
+
+    await expect(service.getUserCreditBalance('user-1')).resolves.toEqual({
+      userId: 'user-1',
+      credits: 42,
+      updatedAt: '2026-05-29T12:00:00.000Z',
+    });
   });
 
   it('creates an embedded card purchase without checkout preference', async () => {

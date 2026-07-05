@@ -6,6 +6,7 @@ import type {
   CreateCreditPurchaseResponse,
   CreateEmbeddedCreditPurchaseResponse,
   SimulatePaymentResponse,
+  UserCreditBalanceResponse,
 } from '@veridit/contracts';
 import { AppService } from './app.service';
 
@@ -58,6 +59,12 @@ const simulatePaymentResponse: SimulatePaymentResponse = {
   credits: 10,
   packageName: 'basic',
   packageDisplayName: 'Pacote Inicial',
+};
+
+const creditBalanceResponse: UserCreditBalanceResponse = {
+  userId: 'user-1',
+  credits: 15,
+  updatedAt: '2026-05-29T12:00:00.000Z',
 };
 
 function fetchResponse(status: number, payload: unknown): Response {
@@ -156,6 +163,18 @@ describe('Api Gateway AppService billing purchases', () => {
       },
     );
     expect(result).toEqual(cardPaymentResponse);
+  });
+
+  it('forwards user credit balance requests to billing', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(200, creditBalanceResponse));
+
+    const result = await service.getUserCreditBalance('user-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3102/users/user-1/credits',
+      undefined,
+    );
+    expect(result).toEqual(creditBalanceResponse);
   });
 
   it('forwards simulated payment confirmations to billing', async () => {

@@ -18,6 +18,7 @@ import {
   type SimulatePaymentResponse,
   type StartCaptureRequest,
   type UpdateUserProfileRequest,
+  type UserCreditBalanceResponse,
   type UserResponse,
 } from '@veridit/contracts';
 import { LoginDto } from './dto/login.dto';
@@ -152,6 +153,14 @@ export class AppService {
       'billing-service',
       this.urls.billing,
       '/packages',
+    );
+  }
+
+  getUserCreditBalance(userId: string): Promise<UserCreditBalanceResponse> {
+    return this.getFromService(
+      'billing-service',
+      this.urls.billing,
+      `/users/${userId}/credits`,
     );
   }
 

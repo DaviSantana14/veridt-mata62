@@ -13,6 +13,7 @@ import {
   type HealthResponse,
   type PurchaseCreditsRequest,
   type SimulatePaymentResponse,
+  type UserCreditBalanceResponse,
 } from '@veridit/contracts';
 import {
   CreditPackageName,
@@ -125,6 +126,22 @@ export class AppService {
       pricePerCreditInCents: creditPackage.pricePerCreditInCents,
       benefits: creditPackage.benefits,
     }));
+  }
+
+  async getUserCreditBalance(
+    userId: string,
+  ): Promise<UserCreditBalanceResponse> {
+    const balance = await this.prisma.userCreditBalance.findUnique({
+      where: {
+        userId,
+      },
+    });
+
+    return {
+      userId,
+      credits: balance?.credits ?? 0,
+      updatedAt: balance?.updatedAt?.toISOString(),
+    };
   }
 
   async createMockPurchase(

@@ -103,6 +103,12 @@ export interface CreditPackageResponse {
   benefits: string;
 }
 
+export interface UserCreditBalanceResponse {
+  userId: string;
+  credits: number;
+  updatedAt?: string;
+}
+
 export interface PurchaseCreditsRequest {
   userId: string;
   packageName: "basic" | "medium" | "premium";

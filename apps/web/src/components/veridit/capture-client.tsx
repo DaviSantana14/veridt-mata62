@@ -47,18 +47,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@/components/ui/toggle-group";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useUserCreditBalance } from "@/components/veridit/credit-balance";
 import { EvidencePreview } from "@/components/veridit/evidence-preview";
 import { Timeline } from "@/components/veridit/timeline";
+import { getAuthSession } from "@/lib/auth-session";
 import { startMockCapture } from "@/lib/gateway";
-import { captureChecklist, captureTypes, chainOfCustody, currentUser } from "@/lib/mock-data";
+import {
+  captureChecklist,
+  captureTypes,
+  chainOfCustody,
+} from "@/lib/mock-data";
 
 export function CaptureClient() {
   const router = useRouter();
-  const [captureType, setCaptureType] = useState<"video" | "screenshot">("video");
+  const { credits, loading: creditsLoading } = useUserCreditBalance();
+  const [captureType, setCaptureType] = useState<"video" | "screenshot">(
+    "video",
+  );
   const [url, setUrl] = useState("https://exemplo-processo.jus.br/detalhes");
   const [includeScroll, setIncludeScroll] = useState(true);
   const [pending, setPending] = useState(false);
@@ -67,12 +73,18 @@ export function CaptureClient() {
     event.preventDefault();
     setPending(true);
 
+    const session = getAuthSession();
+
+    if (!session) {
+      setPending(false);
+      toast.error("Sessão expirada. Faça login novamente.");
+      return;
+    }
+
     const result = await startMockCapture({
-      userId: "user-demo-001",
+      userId: session.user.id,
       title:
-        captureType === "video"
-          ? "Gravação de Navegação"
-          : "Captura de Tela",
+        captureType === "video" ? "Gravação de Navegação" : "Captura de Tela",
       siteUrl: url,
     });
 
@@ -81,9 +93,12 @@ export function CaptureClient() {
     if (result.ok) {
       toast.success("Captura registrada no serviço.");
     } else {
-      toast.warning("Captura registrada localmente. API Gateway indisponível.", {
-        description: result.message,
-      });
+      toast.warning(
+        "Captura registrada localmente. API Gateway indisponível.",
+        {
+          description: result.message,
+        },
+      );
     }
 
     router.push("/captura/concluida");
@@ -147,7 +162,9 @@ export function CaptureClient() {
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="capture-profile">Perfil técnico</FieldLabel>
+                  <FieldLabel htmlFor="capture-profile">
+                    Perfil técnico
+                  </FieldLabel>
                   <Select defaultValue="legal">
                     <SelectTrigger id="capture-profile" className="w-full">
                       <SelectValue placeholder="Perfil técnico" />
@@ -163,7 +180,9 @@ export function CaptureClient() {
 
               <div className="flex items-center justify-between gap-4 rounded-xl border bg-background/80 p-4">
                 <div>
-                  <FieldLabel htmlFor="include-scroll">Capturar rolagem e metadados</FieldLabel>
+                  <FieldLabel htmlFor="include-scroll">
+                    Capturar rolagem e metadados
+                  </FieldLabel>
                   <FieldDescription>
                     Mantém contexto de navegação para relatório mais completo.
                   </FieldDescription>
@@ -182,13 +201,24 @@ export function CaptureClient() {
           <div className="grid gap-2">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium">Preparação técnica</span>
-              <span className="text-muted-foreground">{pending ? "78%" : "Pronto"}</span>
+              <span className="text-muted-foreground">
+                {pending ? "78%" : "Pronto"}
+              </span>
             </div>
             <Progress value={pending ? 78 : 100} className="h-2" />
           </div>
-          <Button type="submit" form="capture-form" disabled={pending} className="w-full">
+          <Button
+            type="submit"
+            form="capture-form"
+            disabled={pending}
+            className="w-full"
+          >
             {pending ? (
-              <Loader2 data-icon="inline-start" className="animate-spin" aria-hidden="true" />
+              <Loader2
+                data-icon="inline-start"
+                className="animate-spin"
+                aria-hidden="true"
+              />
             ) : captureType === "video" ? (
               <Video data-icon="inline-start" aria-hidden="true" />
             ) : (
@@ -204,7 +234,9 @@ export function CaptureClient() {
           <ShieldCheck aria-hidden="true" />
           <AlertTitle>Saldo e cadeia de custódia prontos</AlertTitle>
           <AlertDescription>
-            Saldo atual: {currentUser.credits} créditos. Cada captura consome 1 crédito e gera relatório com hash.
+            Saldo atual:{" "}
+            {creditsLoading && credits === null ? "..." : (credits ?? 0)}{" "}
+            créditos. Cada captura consome 1 crédito e gera relatório com hash.
           </AlertDescription>
         </Alert>
 
@@ -212,7 +244,9 @@ export function CaptureClient() {
           <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Pré-visualização</CardTitle>
-              <CardDescription>Composição aproximada do registro antes da captura.</CardDescription>
+              <CardDescription>
+                Composição aproximada do registro antes da captura.
+              </CardDescription>
             </div>
             <Dialog>
               <DialogTrigger asChild>
@@ -228,12 +262,20 @@ export function CaptureClient() {
                     Visual prévio do conteúdo que será registrado.
                   </DialogDescription>
                 </DialogHeader>
-                <EvidencePreview title="Prévia da captura" url={url} kind={captureType} />
+                <EvidencePreview
+                  title="Prévia da captura"
+                  url={url}
+                  kind={captureType}
+                />
               </DialogContent>
             </Dialog>
           </CardHeader>
           <CardContent>
-            <EvidencePreview title="Prévia da captura" url={url} kind={captureType} />
+            <EvidencePreview
+              title="Prévia da captura"
+              url={url}
+              kind={captureType}
+            />
           </CardContent>
         </Card>
 
@@ -241,13 +283,18 @@ export function CaptureClient() {
           <Card className="premium-card rounded-2xl">
             <CardHeader>
               <CardTitle>Checklist técnico</CardTitle>
-              <CardDescription>Critérios aplicados no fluxo de registro.</CardDescription>
+              <CardDescription>
+                Critérios aplicados no fluxo de registro.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <ul className="grid gap-3">
                 {captureChecklist.map((item) => (
                   <li key={item} className="flex items-start gap-3 text-sm">
-                    <CheckCircle2 className="mt-0.5 text-[color:var(--success)]" aria-hidden="true" />
+                    <CheckCircle2
+                      className="mt-0.5 text-[color:var(--success)]"
+                      aria-hidden="true"
+                    />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -258,7 +305,9 @@ export function CaptureClient() {
           <Card className="premium-card rounded-2xl">
             <CardHeader>
               <CardTitle>Etapas do registro</CardTitle>
-              <CardDescription>Fluxo documental esperado ao concluir.</CardDescription>
+              <CardDescription>
+                Fluxo documental esperado ao concluir.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Timeline

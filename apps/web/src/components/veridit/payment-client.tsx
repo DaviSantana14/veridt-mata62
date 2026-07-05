@@ -28,7 +28,7 @@ import {
   createEmbeddedCreditPurchase,
   simulatePayment,
 } from "@/lib/gateway";
-import { currentUser } from "@/lib/mock-data";
+import { getAuthSession } from "@/lib/auth-session";
 import type { CreateCardPaymentResponse } from "@veridit/contracts";
 
 type BrickStatus = "preparing" | "ready" | "submitting" | "error";
@@ -133,11 +133,19 @@ export function PaymentClient({
     async function renderBrick() {
       setStatus("preparing");
 
+      const session = getAuthSession();
+
+      if (!session) {
+        setStatus("error");
+        toast.error("Sessão expirada. Faça login novamente.");
+        return;
+      }
+
       const purchaseResult = await createEmbeddedCreditPurchase(
         {
-          userId: "user-demo-001",
+          userId: session.user.id,
           packageName,
-          payerEmail: currentUser.email,
+          payerEmail: session.user.email,
         },
         crypto.randomUUID(),
       );
@@ -175,7 +183,7 @@ export function PaymentClient({
           initialization: {
             amount: pendingPurchase.amountInCents / 100,
             payer: {
-              email: currentUser.email,
+              email: session.user.email,
             },
           },
           customization: {
@@ -196,7 +204,11 @@ export function PaymentClient({
 
               const paymentResult = await createCardPayment(
                 pendingPurchase.purchaseId,
-                normalizePaymentBrickFormData(formData, payload),
+                normalizePaymentBrickFormData(
+                  formData,
+                  payload,
+                  session.user.email,
+                ),
                 getStablePaymentIdempotencyKey(paymentIdempotencyKeyRef),
               );
 
@@ -259,7 +271,7 @@ export function PaymentClient({
       controllerRef.current?.unmount?.();
       controllerRef.current = null;
     };
-  }, [router, sdkReady]);
+  }, [packageName, router, sdkReady]);
 
   const loading = status === "preparing" || status === "submitting";
 
@@ -415,6 +427,7 @@ export function PaymentClient({
 function normalizePaymentBrickFormData(
   formData: PaymentBrickFormData,
   payload: PaymentBrickSubmitPayload,
+  payerEmail: string,
 ) {
   const selectedPaymentMethod =
     "selectedPaymentMethod" in payload
@@ -445,7 +458,7 @@ function normalizePaymentBrickFormData(
     selectedPaymentMethod,
     issuerId,
     payer: {
-      email: formData.payer?.email ?? currentUser.email,
+      email: formData.payer?.email ?? payerEmail,
       identification: formData.payer?.identification,
     },
   };

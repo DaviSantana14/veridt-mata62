@@ -4,6 +4,7 @@ import type {
   CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
   SimulatePaymentResponse,
+  UserCreditBalanceResponse,
 } from "@veridit/contracts";
 
 const BASE_URL =
@@ -153,6 +154,15 @@ export function simulatePayment(purchaseId: string) {
     {
       method: "POST",
       body: JSON.stringify({}),
+    },
+  );
+}
+
+export function getUserCreditBalance(userId: string) {
+  return requestGateway<UserCreditBalanceResponse>(
+    `/billing/users/${userId}/credits`,
+    {
+      method: "GET",
     },
   );
 }

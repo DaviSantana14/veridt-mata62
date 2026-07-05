@@ -32,7 +32,7 @@ import { VeriditLogo } from "@/components/layout/veridit-logo";
 import { SessionUserIdentity } from "@/components/layout/session-user";
 import { UserMenu } from "@/components/layout/user-menu";
 import { AuthBoundary } from "@/components/veridit/auth-boundary";
-import { currentUser } from "@/lib/mock-data";
+import { CreditBalanceText } from "@/components/veridit/credit-balance";
 import { cn } from "@/lib/utils";
 
 type ActiveRoute = "dashboard" | "capture" | "credits" | "profile";
@@ -101,15 +101,22 @@ function NavigationList({
                   compact && "justify-center px-0",
                 )}
               >
-                <Link href={item.href} aria-current={selected ? "page" : undefined}>
+                <Link
+                  href={item.href}
+                  aria-current={selected ? "page" : undefined}
+                >
                   <Icon aria-hidden="true" />
                   {compact ? null : (
                     <span className="grid leading-tight">
-                      <span className="text-sm font-semibold">{item.label}</span>
+                      <span className="text-sm font-semibold">
+                        {item.label}
+                      </span>
                       <span
                         className={cn(
                           "text-xs",
-                          selected ? "text-primary-foreground/75" : "text-muted-foreground",
+                          selected
+                            ? "text-primary-foreground/75"
+                            : "text-muted-foreground",
                         )}
                       >
                         {item.description}
@@ -119,7 +126,9 @@ function NavigationList({
                 </Link>
               </Button>
             </TooltipTrigger>
-            {compact ? <TooltipContent side="right">{item.label}</TooltipContent> : null}
+            {compact ? (
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            ) : null}
           </Tooltip>
         );
       })}
@@ -138,11 +147,14 @@ function SidebarNav({ active }: { active: ActiveRoute }) {
 
         <div className="mt-6 rounded-2xl border bg-secondary/55 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <FileCheck2 className="text-[color:var(--evidence)]" aria-hidden="true" />
+            <FileCheck2
+              className="text-[color:var(--evidence)]"
+              aria-hidden="true"
+            />
             Cofre de evidências
           </div>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            {currentUser.credits} créditos ativos para capturas com relatório e hash.
+            <CreditBalanceText /> ativos para capturas com relatório e hash.
           </p>
           <Button asChild className="mt-4 w-full">
             <Link href="/captura">
@@ -164,14 +176,21 @@ function MobileNav({ active }: { active: ActiveRoute }) {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="outline" size="icon" className="xl:hidden" aria-label="Abrir menu">
+        <Button
+          variant="outline"
+          size="icon"
+          className="xl:hidden"
+          aria-label="Abrir menu"
+        >
           <Menu aria-hidden="true" />
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-[316px] p-0">
         <SheetHeader className="sr-only">
           <SheetTitle>Navegação Veridit</SheetTitle>
-          <SheetDescription>Menu principal do sistema Veridit.</SheetDescription>
+          <SheetDescription>
+            Menu principal do sistema Veridit.
+          </SheetDescription>
         </SheetHeader>
         <ScrollArea className="h-dvh">
           <div className="flex min-h-dvh flex-col gap-6 p-5">
@@ -180,7 +199,9 @@ function MobileNav({ active }: { active: ActiveRoute }) {
             <Separator />
             <div className="rounded-2xl border bg-secondary/65 p-4">
               <p className="text-sm font-semibold">Saldo disponível</p>
-              <p className="mt-1 text-2xl font-bold">{currentUser.credits} créditos</p>
+              <p className="mt-1 text-2xl font-bold">
+                <CreditBalanceText />
+              </p>
               <Button asChild className="mt-4 w-full">
                 <Link href="/captura">
                   <Plus data-icon="inline-start" aria-hidden="true" />
@@ -228,7 +249,7 @@ export function ProductShell({
                 <div className="flex items-center gap-2">
                   <Badge className="hidden rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)] sm:inline-flex">
                     <ShieldCheck aria-hidden="true" />
-                    {currentUser.credits} créditos
+                    <CreditBalanceText />
                   </Badge>
                   <UserMenu />
                 </div>

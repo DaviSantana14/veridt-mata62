@@ -4,10 +4,11 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CreditBalanceText } from "@/components/veridit/credit-balance";
 import { PlanCard } from "@/components/veridit/plan-card";
 import { SectionHeader } from "@/components/veridit/section-header";
 import { getGatewayPlans } from "@/lib/gateway";
-import { currentUser, type CreditPlan } from "@/lib/mock-data";
+import type { CreditPlan } from "@/lib/mock-data";
 import type { CreditPackageResponse } from "@veridit/contracts";
 
 const planPresentation: Record<
@@ -45,7 +46,7 @@ export default async function CreditsPage() {
           meta={
             <Badge className="rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)]">
               <CreditCard aria-hidden="true" />
-              Saldo atual: {currentUser.credits} créditos
+              Saldo atual: <CreditBalanceText />
             </Badge>
           }
         />

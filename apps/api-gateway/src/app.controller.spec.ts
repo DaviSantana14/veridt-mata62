@@ -6,6 +6,7 @@ import type {
   CreateCreditPurchaseResponse,
   CreateEmbeddedCreditPurchaseResponse,
   SimulatePaymentResponse,
+  UserCreditBalanceResponse,
 } from '@veridit/contracts';
 import { AppController } from './app.controller';
 import type { AppService } from './app.service';
@@ -61,12 +62,19 @@ const simulatePaymentResponse: SimulatePaymentResponse = {
   packageDisplayName: 'Pacote Inicial',
 };
 
+const creditBalanceResponse: UserCreditBalanceResponse = {
+  userId: 'user-1',
+  credits: 15,
+  updatedAt: '2026-05-29T12:00:00.000Z',
+};
+
 describe('Api Gateway AppController billing purchases', () => {
   let controller: AppController;
   let appService: {
     createCreditPurchase: jest.Mock;
     createCardPurchase: jest.Mock;
     createMercadoPagoCardPayment: jest.Mock;
+    getUserCreditBalance: jest.Mock;
     simulatePayment: jest.Mock;
     handleMercadoPagoWebhook: jest.Mock;
   };
@@ -78,6 +86,7 @@ describe('Api Gateway AppController billing purchases', () => {
       createMercadoPagoCardPayment: jest
         .fn()
         .mockResolvedValue(cardPaymentResponse),
+      getUserCreditBalance: jest.fn().mockResolvedValue(creditBalanceResponse),
       simulatePayment: jest.fn().mockResolvedValue(simulatePaymentResponse),
       handleMercadoPagoWebhook: jest.fn().mockResolvedValue({
         received: true,
@@ -114,6 +123,14 @@ describe('Api Gateway AppController billing purchases', () => {
       purchaseBody,
       'key-1',
     );
+  });
+
+  it('passes user credit balance requests to the service', async () => {
+    await expect(controller.getUserCreditBalance('user-1')).resolves.toEqual(
+      creditBalanceResponse,
+    );
+
+    expect(appService.getUserCreditBalance).toHaveBeenCalledWith('user-1');
   });
 
   it('rejects embedded card purchases without idempotency key headers', () => {

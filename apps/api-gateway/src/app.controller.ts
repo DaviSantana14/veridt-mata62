@@ -22,6 +22,7 @@ import type {
   HealthResponse,
   PurchaseCreditsRequest,
   SimulatePaymentResponse,
+  UserCreditBalanceResponse,
   UserResponse,
 } from '@veridit/contracts';
 import { AppService } from './app.service';
@@ -111,6 +112,13 @@ export class AppController {
   @Get('billing/packages')
   getCreditPackages(): Promise<CreditPackageResponse[]> {
     return this.appService.getCreditPackages();
+  }
+
+  @Get('billing/users/:userId/credits')
+  getUserCreditBalance(
+    @Param('userId') userId: string,
+  ): Promise<UserCreditBalanceResponse> {
+    return this.appService.getUserCreditBalance(userId);
   }
 
   @Post('billing/purchases/mock')

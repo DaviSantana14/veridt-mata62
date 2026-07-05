@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EvidenceCard } from "@/components/veridit/evidence-card";
+import { useUserCreditBalance } from "@/components/veridit/credit-balance";
 import { MetricPanel } from "@/components/veridit/metric-panel";
 import { SectionHeader } from "@/components/veridit/section-header";
 import { StatusPill } from "@/components/veridit/status-pill";
@@ -42,6 +43,7 @@ function getFirstName(fullName: string) {
 
 export function DashboardClient() {
   const [query, setQuery] = useState("");
+  const { credits, loading: creditsLoading } = useUserCreditBalance();
   const [firstName] = useState(() => {
     const session = getAuthSession();
 
@@ -111,7 +113,7 @@ export function DashboardClient() {
         />
         <MetricPanel
           label="Créditos"
-          value={currentUser.credits}
+          value={creditsLoading && credits === null ? "..." : (credits ?? 0)}
           description="Saldo para novas capturas"
           icon={CreditCard}
           tone="evidence"
