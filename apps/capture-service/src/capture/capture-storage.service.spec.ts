@@ -1,7 +1,7 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CaptureStorageService } from './capture-storage.service';
 
 const originalEnv = { ...process.env };
@@ -60,6 +60,81 @@ describe('CaptureStorageService', () => {
     await writeFile(filePath, Buffer.from('abc'));
 
     await expect(service.getFileSize(filePath)).resolves.toBe(3);
+  });
+
+  it('opens an existing asset inside a record directory', async () => {
+    const { fileName, filePath } = await service.createAssetPath(
+      'record-1',
+      'IMAGE',
+      new Date('2026-01-02T03:04:05.006Z'),
+    );
+    await writeFile(filePath, Buffer.from('abc'));
+
+    const openedAsset = await service.openAsset('record-1', fileName);
+
+    expect(openedAsset.size).toBe(3);
+    expect(openedAsset.stream.path).toBe(filePath);
+    openedAsset.stream.destroy();
+  });
+
+  it('throws not found for missing asset files', async () => {
+    await expect(service.openAsset('record-1', 'missing.png')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('throws not found when the asset path points to a directory', async () => {
+    const recordDir = await service.getRecordDir('record-1');
+    await mkdir(join(recordDir, 'folder'));
+
+    await expect(service.openAsset('record-1', 'folder')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('rejects symlinked asset files', async () => {
+    const recordDir = await service.getRecordDir('record-1');
+    const externalPath = join(storageRoot, 'external.png');
+    const symlinkPath = join(recordDir, 'linked.png');
+    await writeFile(externalPath, Buffer.from('abc'));
+
+    try {
+      await symlink(externalPath, symlinkPath);
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as NodeJS.ErrnoException).code === 'EPERM'
+      ) {
+        return;
+      }
+
+      throw error;
+    }
+
+    await expect(service.openAsset('record-1', 'linked.png')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('rejects asset file names that traverse outside the record directory', async () => {
+    const invalidFileNames = [
+      '',
+      ' ',
+      '../escape.png',
+      'folder/asset.png',
+      'folder\\asset.png',
+      'asset\0.png',
+    ];
+
+    await Promise.all(
+      invalidFileNames.map((fileName) =>
+        expect(service.openAsset('record-1', fileName)).rejects.toBeInstanceOf(
+          BadRequestException,
+        ),
+      ),
+    );
   });
 
   it('rejects record IDs that traverse outside storage', async () => {

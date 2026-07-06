@@ -16,12 +16,14 @@ import {
   type CompleteCaptureResponse,
   type ContentRecordResponse,
   type HealthResponse,
+  type ListCaptureAssetsResponse,
   type ListCaptureRecordsResponse,
   type NavigateCaptureRequest,
   type NavigateCaptureResponse,
   type StartCaptureRequest,
   type StartCaptureSessionResponse,
 } from '@veridit/contracts';
+import type { ReadStream } from 'node:fs';
 import { CaptureSessionManagerService } from './capture/capture-session-manager.service';
 import { CaptureStorageService } from './capture/capture-storage.service';
 import { UrlPolicyService } from './capture/url-policy.service';
@@ -56,6 +58,13 @@ interface StoredCaptureAsset {
 interface PendingVideoAsset {
   fileName: string;
   filePath: string;
+}
+
+export interface CaptureAssetDownload {
+  stream: ReadStream;
+  fileName: string;
+  contentType: string;
+  contentLength?: number;
 }
 
 @Injectable()
@@ -159,6 +168,42 @@ export class AppService {
     return {
       ...this.mapContentRecord(record),
       ...assetCounts,
+    };
+  }
+
+  async listAssets(recordId: string): Promise<ListCaptureAssetsResponse> {
+    await this.findRecordOrThrow(recordId);
+    const assets = (await this.prisma.captureAsset.findMany({
+      where: { recordId },
+      orderBy: { createdAt: 'asc' },
+    })) as StoredCaptureAsset[];
+
+    return {
+      recordId,
+      assets: assets.map((asset) => this.mapCaptureAsset(asset)),
+    };
+  }
+
+  async getAssetDownload(
+    recordId: string,
+    assetId: string,
+  ): Promise<CaptureAssetDownload> {
+    await this.findRecordOrThrow(recordId);
+    const asset = (await this.prisma.captureAsset.findUnique({
+      where: { id: assetId },
+    })) as StoredCaptureAsset | null;
+
+    if (!asset || asset.recordId !== recordId) {
+      throw new NotFoundException('Arquivo de captura nao encontrado');
+    }
+
+    const openedAsset = await this.storage.openAsset(recordId, asset.fileName);
+
+    return {
+      stream: openedAsset.stream,
+      fileName: asset.fileName,
+      contentType: this.getAssetContentType(asset.type),
+      contentLength: openedAsset.size,
     };
   }
 
@@ -501,6 +546,10 @@ export class AppService {
 
   private mapOptionalDate(date: Date | null | undefined): string | undefined {
     return date?.toISOString();
+  }
+
+  private getAssetContentType(type: CaptureAssetType): string {
+    return type === 'IMAGE' ? 'image/png' : 'video/webm';
   }
 
   private getCaptureTitle(siteUrl: string, title?: string): string {
