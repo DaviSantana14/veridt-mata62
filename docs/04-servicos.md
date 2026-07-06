@@ -14,6 +14,7 @@ Entrada HTTP para o frontend. Rotas atuais:
 - `POST /identity/auth/login`
 - `POST /identity/auth/forgot-password`
 - `POST /identity/auth/reset-password`
+- `GET /identity/users/:id`
 - `GET /billing/health`
 - `GET /billing/packages`
 - `POST /billing/purchases/mock`
@@ -21,11 +22,12 @@ Entrada HTTP para o frontend. Rotas atuais:
 - `POST /billing/payments/mercado-pago/webhook`
 - `GET /capture/health`
 - `POST /capture/records/mock`
+- `GET /capture/records/:recordId`
 - `GET /capture/users/:userId/records`
 
 ## `apps/identity-service`
 
-Responsável por usuários, perfis e recuperação de senha. Publica `identity.user_registered` após o cadastro e `identity.password_reset_requested` após solicitação válida de recuperação para disparar emails sem bloquear a resposta ao usuário.
+Responsável por usuários, perfis e recuperação de senha. Fornece nome e email do usuário responsável para a tela de detalhes dos registros realizados. Publica `identity.user_registered` após o cadastro e `identity.password_reset_requested` após solicitação válida de recuperação para disparar emails sem bloquear a resposta ao usuário.
 
 ## `apps/billing-service`
 
@@ -35,7 +37,7 @@ O saldo só é creditado quando o webhook Mercado Pago informa pagamento aprovad
 
 ## `apps/capture-service`
 
-Responsável por registros de conteúdo, sessões de captura e assets capturados. Também lista os registros realizados por usuário para atender o REQ 12.
+Responsável por registros de conteúdo, sessões de captura e assets capturados. Também lista os registros realizados por usuário para atender o REQ 12 e fornece os metadados, status e contagens usados no detalhe do registro do REQ 13.
 
 ## `apps/notification-service`
 
