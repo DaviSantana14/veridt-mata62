@@ -1,542 +1,244 @@
-# Mercado Pago Sandbox Implementation Plan
+# Visualizar Detalhes dos Registros Realizados Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fechar o fluxo de compra real em sandbox com Mercado Pago: o usuário cria uma preferência pelo frontend, é redirecionado ao checkout sandbox, retorna para o app, e o pagamento aprovado credita saldo via webhook.
+**Goal:** Implementar o REQ 13 para que `/registros/:id` mostre detalhes reais do registro selecionado, incluindo nome e email do usuario responsavel.
 
-**Architecture:** O frontend continua consumindo somente o API Gateway. O API Gateway encaminha criação de compra e webhook para o billing-service. O billing-service continua dono da regra de créditos, do banco, da criação de preferência no Mercado Pago e do processamento idempotente de webhooks.
+**Architecture:** O `capture-service` continua sendo dono dos dados de captura e ja expoe `GET /records/:recordId`. O `identity-service` continua sendo dono dos dados do usuario e ja expoe `GET /users/:id` pelo API Gateway. O frontend compoe os dois dados via API Gateway, sem chamada direta a microsservicos e sem criar rota nova desnecessaria.
 
-**Tech Stack:** Next.js App Router, NestJS, Prisma, PostgreSQL, Mercado Pago Node.js SDK (`mercadopago`), Jest, npm workspaces.
-
----
-
-## Referências Técnicas Confirmadas
-
-- O SDK oficial `mercadopago` cria preferências com `Preference.create({ body, requestOptions })`.
-- `body.back_urls` aceita `success`, `pending` e `failure`.
-- `body.notification_url` deve apontar para uma URL HTTPS acessível pelo Mercado Pago.
-- `body.external_reference` deve carregar o `purchaseId` interno para reconciliar pagamento com compra.
-- `requestOptions.idempotencyKey` é suportado na criação da preferência.
-- O pagamento pode ser consultado pelo SDK com `Payment.get({ id })`.
-- A validação de webhook usa headers `x-signature` e `x-request-id`; o manifesto da assinatura é `id:{data.id};request-id:{x-request-id};ts:{ts};`.
-
-## Estado Atual do Código
-
-- `apps/billing-service` já cria compras pendentes, cria preferência no Mercado Pago, persiste `providerPreferenceId` e `checkoutUrl`, consulta pagamentos por webhook e credita saldo uma única vez.
-- `apps/api-gateway` já expõe `POST /billing/purchases`, mas ainda não expõe proxy para `POST /billing/payments/mercado-pago/webhook`.
-- `apps/web` ainda usa `createMockPurchase()` e chama `/billing/purchases/mock` na tela de pagamento.
-- `apps/web` usa planos `initial`, `professional`, `enterprise`; o backend aceita `basic`, `medium`, `premium`.
-- `apps/billing-service/.env.example` possui variáveis do Mercado Pago, mas os redirects default apontam para rotas que não existem.
-- A suíte do `api-gateway` está bloqueada por divergência de TypeScript: build resolve TypeScript 6 no workspace, Jest resolve TypeScript 5.9 na raiz e rejeita `ignoreDeprecations: "6.0"`.
-
-## Estrutura de Arquivos
-
-- Modify: `apps/api-gateway/package.json`  
-  Alinhar TypeScript do gateway com a raiz para estabilizar build e Jest.
-
-- Modify: `apps/api-gateway/tsconfig.json`  
-  Remover configuração aceita só por TypeScript 6 se o gateway voltar a usar TypeScript 5.9.
-
-- Modify: `package-lock.json`  
-  Refletir alterações de dependência/configuração.
-
-- Modify: `apps/api-gateway/src/app.controller.ts`  
-  Adicionar endpoint público de webhook do Mercado Pago sob o namespace do billing.
-
-- Modify: `apps/api-gateway/src/app.service.ts`  
-  Encaminhar payload, query e headers relevantes do webhook para o billing-service.
-
-- Modify: `apps/api-gateway/src/app.controller.spec.ts`  
-  Cobrir rejeição/encaminhamento do webhook pelo controller.
-
-- Modify: `apps/api-gateway/src/app.service.spec.ts`  
-  Cobrir proxy do webhook para `billing-service`.
-
-- Modify: `apps/billing-service/src/payments/mercado-pago-payment.provider.ts`  
-  Tornar sandbox explícito, preferir `sandbox_init_point` quando o ambiente for sandbox, e centralizar URLs de retorno.
-
-- Create: `apps/billing-service/src/payments/mercado-pago-webhook-signature.ts`  
-  Validar assinatura HMAC do webhook quando `MERCADO_PAGO_WEBHOOK_SECRET` estiver configurado.
-
-- Modify: `apps/billing-service/src/app.controller.ts`  
-  Ler headers `x-signature` e `x-request-id` e repassar ao service.
-
-- Modify: `apps/billing-service/src/app.service.ts`  
-  Validar assinatura antes de consultar o pagamento, mantendo comportamento idempotente.
-
-- Modify: `apps/billing-service/src/app.service.spec.ts`  
-  Cobrir webhooks válidos, assinatura ausente quando segredo está configurado, assinatura inválida e ausência de segredo em sandbox local.
-
-- Modify: `apps/billing-service/.env.example`  
-  Documentar ambiente sandbox, segredo de webhook e URLs finais.
-
-- Modify: `apps/web/src/lib/gateway.ts`  
-  Adicionar client para `POST /billing/purchases` com `Idempotency-Key`.
-
-- Modify: `apps/web/src/lib/mock-data.ts`  
-  Mapear cada plano visual para o pacote do backend.
-
-- Modify: `apps/web/src/components/veridit/payment-client.tsx`  
-  Trocar a ação da aba Mercado Pago para criar preferência real e redirecionar ao checkout sandbox.
-
-- Create: `apps/web/src/app/pagamento/retorno/page.tsx`  
-  Mostrar retorno de sucesso, pendência ou falha após o checkout.
-
-- Modify: `apps/web/src/app/creditos/page.tsx`  
-  Ajustar copy para indicar checkout sandbox real via Mercado Pago.
-
-- Modify: `docs/02-como-rodar.md`  
-  Documentar configuração sandbox, tunnel HTTPS e teste manual.
-
-- Modify: `docs/04-servicos.md`  
-  Atualizar rotas e responsabilidade do billing.
+**Tech Stack:** Next.js 16 App Router, React 19, NestJS 11, Prisma, PostgreSQL, TypeScript, Jest, Node architecture tests.
 
 ---
 
-## Task 1: Estabilizar Tooling do API Gateway
+## Contexto Confirmado
 
-**Files:**
-- Modify: `apps/api-gateway/package.json`
-- Modify: `apps/api-gateway/tsconfig.json`
-- Modify: `package-lock.json`
+- O PDF `docs/veridit-req.pdf` define o REQ 13 como: o sistema deve disponibilizar os dados do registro selecionado pelo usuario com base no Apendice A.
+- Campos do Apendice A para `Detalhes dos registros`:
+  - id gerado pelo sistema;
+  - titulo;
+  - data/hora inicio;
+  - data/hora fim;
+  - tipos de dados registrados;
+  - informacoes dos dados, com numero de imagens e videos;
+  - usuario responsavel pelo registro.
+- Decisao de produto: usuario responsavel deve aparecer como nome e email.
+- `ContentRecord` e `CaptureAsset` vivem no banco do `capture-service`.
+- Nome/email do usuario vivem no banco do `identity-service`.
+- O API Gateway ja expoe:
+  - `GET /capture/records/:recordId`;
+  - `GET /identity/users/:id`.
+- O frontend ja tem helpers:
+  - `getCaptureRecord(recordId)` em `apps/web/src/lib/gateway.ts`;
+  - `getUserProfile(userId)` em `apps/web/src/lib/gateway.ts`.
+- A pagina `apps/web/src/app/registros/[id]/page.tsx` existe, mas ainda usa `getRecordById` e `chainOfCustody` de `apps/web/src/lib/mock-data.ts`.
+- A pagina `apps/web/src/app/captura/concluida/page.tsx` ja mostra um detalhe minimo real usando `getCaptureRecord(recordId)`. Ela deve servir como referencia de formatacao e estados de erro, mas nao substitui `/registros/:id`.
+- O dashboard ja lista registros reais, mas atualmente as acoes de registros finalizados apontam para `/captura/concluida?recordId=...`. Para REQ 13, o fluxo oficial de detalhes deve apontar para `/registros/:id`.
 
-- [ ] **Step 1: Reproduzir a falha atual do Jest**
+## Referencias Validadas
 
-Run:
+- Context7 confirmou que, no Next.js App Router atual, paginas com rota dinamica recebem `params` como `Promise` em Server Components e devem usar `await params`.
+- Context7 confirmou o padrao NestJS de `@Get(':id')` com `@Param('id')`, e que rotas parametrizadas devem respeitar ordem para nao interceptar caminhos mais especificos.
+- Context7 confirmou que Prisma Client suporta `include`, `select` e contagens filtradas de relacoes. Para este requisito, a rota existente ja retorna `imageCount` e `videoCount`, entao nao e necessario redesenhar consultas agora.
 
-```bash
-npm --workspace @veridit/api-gateway test -- --runInBand
-```
+## Escopo
 
-Expected: FAIL com `TS5103: Invalid value for '--ignoreDeprecations'`.
+Implementar:
 
-- [ ] **Step 2: Alinhar TypeScript do gateway com a raiz**
+- pagina real de detalhes em `/registros/:id`;
+- exibicao de nome e email do usuario responsavel;
+- remocao do uso de `mock-data` na pagina de detalhes;
+- redirecionamento da listagem/dashboard para a pagina real de detalhes;
+- view model simples para formatar os dados do registro;
+- testes de arquitetura para impedir regressao para mock;
+- documentacao das rotas usadas pelo REQ 13;
+- verificacao por build/testes.
 
-Alterar `apps/api-gateway/package.json`:
+Nao implementar neste plano:
 
-```json
-"typescript": "5.9.2"
-```
+- REQ 14, relatorio real;
+- REQ 15, ZIP real;
+- download de assets;
+- exibicao de lista de arquivos capturados;
+- autenticacao/autorizacao backend por JWT;
+- composicao no API Gateway;
+- migracao de banco.
 
-Remover de `apps/api-gateway/tsconfig.json`:
+## Decisao De Fluxo
 
-```json
-"ignoreDeprecations": "6.0"
-```
-
-Racional: a raiz já usa TypeScript 5.9.2, e `ts-jest` está resolvendo essa versão durante testes.
-
-- [ ] **Step 3: Atualizar lockfile**
-
-Run:
-
-```bash
-npm install --package-lock-only --ignore-scripts --no-audit --fund=false
-```
-
-Expected: `package-lock.json` atualizado sem reinstalar scripts.
-
-- [ ] **Step 4: Verificar build e testes do gateway**
-
-Run:
-
-```bash
-npm --workspace @veridit/api-gateway run build
-npm --workspace @veridit/api-gateway test -- --runInBand
-```
-
-Expected: ambos exit code 0.
-
-- [ ] **Step 5: Commit**
-
-Run:
-
-```bash
-git add apps/api-gateway/package.json apps/api-gateway/tsconfig.json package-lock.json
-git commit -m "chore: align api gateway typescript tooling"
-```
-
----
-
-## Task 2: Expor Webhook do Mercado Pago Pelo API Gateway
-
-**Files:**
-- Modify: `apps/api-gateway/src/app.controller.ts`
-- Modify: `apps/api-gateway/src/app.service.ts`
-- Modify: `apps/api-gateway/src/app.controller.spec.ts`
-- Modify: `apps/api-gateway/src/app.service.spec.ts`
-
-- [ ] **Step 1: Escrever teste de controller para webhook**
-
-Adicionar caso em `apps/api-gateway/src/app.controller.spec.ts`:
-
-```ts
-it('forwards Mercado Pago webhook payloads', async () => {
-  await controller.handleMercadoPagoWebhook(
-    { type: 'payment', data: { id: 'payment-1' } },
-    { 'x-request-id': 'request-1' },
-    {},
-  );
-});
-```
-
-Expected behavior: o controller chama `appService.handleMercadoPagoWebhook(...)` com `body`, `headers` e `query`.
-
-- [ ] **Step 2: Escrever teste de service para proxy**
-
-Adicionar caso em `apps/api-gateway/src/app.service.spec.ts`:
-
-```ts
-await service.handleMercadoPagoWebhook(
-  { type: 'payment', data: { id: 'payment-1' } },
-  { 'x-request-id': 'request-1' },
-  {},
-);
-```
-
-Expected fetch:
+Fluxo alvo:
 
 ```text
-POST http://localhost:3102/payments/mercado-pago/webhook
+Dashboard
+  -> /registros/:id
+    -> web chama GET /capture/records/:recordId pelo API Gateway
+    -> web usa record.userId e chama GET /identity/users/:id pelo API Gateway
+    -> tela renderiza campos do REQ 13
 ```
 
-Headers esperados:
+Motivo:
+
+- e a menor mudanca que atende o requisito;
+- preserva isolamento: cada servico continua lendo apenas seu banco;
+- evita criar endpoint composto antes de haver autenticacao forte;
+- reaproveita helpers e testes ja existentes.
+
+## Experiencia Esperada
+
+Em `/registros/:id`, mostrar:
 
 ```text
-content-type: application/json
-x-request-id: request-1
+Titulo
+Status
+ID do registro
+URL/site do registro
+Data/hora inicio
+Data/hora fim ou "-"
+Tipos de dados registrados: Print, Video, Print + Video, ou Sem midia
+Numero de imagens
+Numero de videos
+Usuario responsavel: nome + email
+ID tecnico do usuario
 ```
 
-- [ ] **Step 3: Rodar testes e confirmar falha**
-
-Run:
-
-```bash
-npm --workspace @veridit/api-gateway test -- --runInBand
-```
-
-Expected: FAIL porque `handleMercadoPagoWebhook` ainda não existe.
-
-- [ ] **Step 4: Implementar controller**
-
-Adicionar em `apps/api-gateway/src/app.controller.ts`:
-
-```ts
-@Post('billing/payments/mercado-pago/webhook')
-handleMercadoPagoWebhook(...) {
-  return this.appService.handleMercadoPagoWebhook(body, headers, query);
-}
-```
-
-Usar `@Body()`, `@Headers()` e `@Query()` para preservar os dados enviados pelo Mercado Pago.
-
-- [ ] **Step 5: Implementar service**
-
-Adicionar em `apps/api-gateway/src/app.service.ts`:
-
-```ts
-handleMercadoPagoWebhook(body, headers, query) {
-  return this.postToService('billing-service', this.urls.billing, '/payments/mercado-pago/webhook', mergedPayload, filteredHeaders);
-}
-```
-
-Filtrar e repassar apenas estes headers externos:
+Estados:
 
 ```text
-x-signature
-x-request-id
+Registro nao encontrado ou erro no capture-service:
+  mostrar erro sem dados ficticios e botao para Dashboard.
+
+Usuario responsavel nao encontrado ou erro no identity-service:
+  mostrar os dados do registro, mostrar userId, e exibir alerta informando que nome/email nao puderam ser carregados.
 ```
 
-- [ ] **Step 6: Rodar testes do gateway**
+Acoes:
 
-Run:
-
-```bash
-npm --workspace @veridit/api-gateway test -- --runInBand
-npm --workspace @veridit/api-gateway run build
+```text
+Voltar para Dashboard
+Nova captura
+Continuar captura, apenas quando status for STARTED
 ```
 
-Expected: exit code 0.
+Nao mostrar como disponiveis nesta tela:
 
-- [ ] **Step 7: Commit**
-
-Run:
-
-```bash
-git add apps/api-gateway/src/app.controller.ts apps/api-gateway/src/app.service.ts apps/api-gateway/src/app.controller.spec.ts apps/api-gateway/src/app.service.spec.ts
-git commit -m "feat: proxy mercado pago webhook through gateway"
+```text
+Ver relatorio
+Baixar ZIP
+Hash, duracao e tamanho ficticios
 ```
+
+Esses pontos pertencem aos requisitos 14 e 15 ou ainda nao existem como dados reais.
 
 ---
 
-## Task 3: Fechar Comportamento Sandbox no Billing Provider
+## Estrutura De Arquivos
+
+### Web
+
+- Modify: `apps/web/src/lib/capture-record-view.ts`
+  - Fazer `detailHref` apontar sempre para `/registros/:id`.
+  - Manter uma rota de retomada separada para registros `STARTED`, se necessario.
+  - Reusar formatacao de data e tipo de dado na pagina de detalhe.
+- Create: `apps/web/src/lib/capture-record-detail-view.ts`
+  - Centralizar o view model da pagina `/registros/:id`.
+  - Receber `CaptureRecordDetailsResponse` e, quando disponivel, `UserResponse`.
+  - Produzir labels prontos para a UI.
+- Modify: `apps/web/src/app/registros/[id]/page.tsx`
+  - Remover `getRecordById` e `chainOfCustody`.
+  - Buscar o registro real com `getCaptureRecord(id)`.
+  - Buscar usuario responsavel com `getUserProfile(record.userId)`.
+  - Renderizar os campos do REQ 13.
+  - Renderizar estados de erro sem fallback mockado.
+- Modify: `apps/web/src/components/veridit/evidence-card.tsx`
+  - Garantir que cards mobile abrem `record.detailHref`, que passa a ser `/registros/:id`.
+- Modify: `apps/web/src/components/veridit/dashboard-client.tsx`
+  - Garantir que a coluna `Detalhes` usa `record.detailHref`.
+  - Se houver acao de continuar captura, ela deve ser separada visualmente da acao de detalhe.
+- Test: `apps/web/test/gateway-architecture.spec.mjs`
+  - Garantir que `/registros/[id]` usa gateway real.
+  - Garantir que `/registros/[id]` nao importa `mock-data`.
+  - Garantir que dashboard/cards podem apontar para `/registros/:id`.
+
+### Docs
+
+- Modify: `docs/04-servicos.md`
+  - Documentar que o REQ 13 usa `GET /capture/records/:recordId` e `GET /identity/users/:id`.
+  - Registrar que nome/email do responsavel vem do `identity-service`.
+
+### Backend
+
+- No code changes expected.
+- O contrato atual `CaptureRecordDetailsResponse` ja tem dados suficientes para o REQ 13 no lado de captura: `id`, `userId`, `title`, `siteUrl`, `status`, `startedAt`, `finishedAt`, `imageCount`, `videoCount`.
+- O contrato atual `UserResponse` ja tem os dados necessarios para responsavel: `id`, `fullName`, `email`.
+
+---
+
+## Task 1: View Model De Detalhes
 
 **Files:**
-- Modify: `apps/billing-service/src/payments/mercado-pago-payment.provider.ts`
-- Create: `apps/billing-service/src/payments/mercado-pago-payment.provider.spec.ts`
-- Modify: `apps/billing-service/.env.example`
+- Modify: `apps/web/src/lib/capture-record-view.ts`
+- Create: `apps/web/src/lib/capture-record-detail-view.ts`
 
-- [ ] **Step 1: Escrever testes do provider**
+- [ ] **Step 1: Ajustar o link canonico de detalhe**
 
-Criar `apps/billing-service/src/payments/mercado-pago-payment.provider.spec.ts` cobrindo:
+Em `apps/web/src/lib/capture-record-view.ts`, alterar a regra de `detailHref` para sempre apontar para `/registros/:id`.
 
-- sandbox usa `sandbox_init_point`;
-- production usa `init_point`;
-- preference recebe `external_reference`, `notification_url`, `back_urls` e `requestOptions.idempotencyKey`;
-- erro claro quando `MERCADO_PAGO_ACCESS_TOKEN` ou `MERCADO_PAGO_WEBHOOK_URL` está vazio.
+Manter qualquer rota de retomada de captura separada do detalhe:
 
-Snippet de expectativa:
-
-```ts
-expect(result.checkoutUrl).toBe('https://sandbox.mercadopago.test/checkout');
-expect(preferenceCreate).toHaveBeenCalledWith(expect.objectContaining({
-  requestOptions: { idempotencyKey: 'key-1' },
-}));
+```text
+detailHref: /registros/:id
+resumeHref: /captura/:id, apenas se status STARTED
 ```
 
-- [ ] **Step 2: Rodar teste e confirmar falha**
+Aceite:
 
-Run:
+- registros concluídos abrem `/registros/:id`;
+- registros falhos abrem `/registros/:id`;
+- registros em andamento tambem podem abrir `/registros/:id`;
+- se a UI quiser continuar captura, usa um link separado para `/captura/:id`.
 
-```bash
-npm --workspace @veridit/billing-service test -- --runInBand mercado-pago-payment.provider.spec.ts
-```
+- [ ] **Step 2: Criar o view model de detalhe**
 
-Expected: FAIL porque a seleção explícita de sandbox ainda não existe.
+Criar `apps/web/src/lib/capture-record-detail-view.ts`.
 
-- [ ] **Step 3: Adicionar variável de ambiente de modo**
+Responsabilidades:
 
-Adicionar em `apps/billing-service/.env.example`:
+- importar `CaptureRecordDetailsResponse` e `UserResponse` de `@veridit/contracts`;
+- importar `formatCaptureDateTime` e `getCaptureDataTypeLabel` de `@/lib/capture-record-view`;
+- exportar um tipo `CaptureRecordDetailView`;
+- exportar uma funcao `toCaptureRecordDetailView(record, responsibleUser?)`.
 
-```env
-MERCADO_PAGO_ENVIRONMENT=sandbox
-MERCADO_PAGO_WEBHOOK_SECRET=
-```
+Campos do view model:
 
-Manter `MERCADO_PAGO_ACCESS_TOKEN` vazio no exemplo para evitar commit de segredo.
-
-- [ ] **Step 4: Implementar seleção de checkout URL**
-
-No provider, criar função curta:
-
-```ts
-function selectCheckoutUrl(response) {
-  return isSandbox() ? response.sandbox_init_point : response.init_point;
-}
+```text
+id
+title
+siteUrl
+status
+statusLabel
+startedAtLabel
+finishedAtLabel
+dataTypeLabel
+imageCountLabel
+videoCountLabel
+responsibleName
+responsibleEmail
+responsibleUserId
+hasResponsibleUserProfile
+resumeHref
 ```
 
 Regras:
 
-- `MERCADO_PAGO_ENVIRONMENT=sandbox` usa `sandbox_init_point`;
-- `MERCADO_PAGO_ENVIRONMENT=production` usa `init_point`;
-- valor ausente usa `sandbox`;
-- se a URL esperada vier vazia, lançar `ServiceUnavailableException`.
-
-- [ ] **Step 5: Ajustar defaults dos back_urls**
-
-Trocar defaults para rotas existentes após Task 5:
-
-```text
-http://localhost:3000/pagamento/retorno?status=success
-http://localhost:3000/pagamento/retorno?status=failure
-http://localhost:3000/pagamento/retorno?status=pending
-```
-
-- [ ] **Step 6: Rodar testes do billing**
-
-Run:
-
-```bash
-npm --workspace @veridit/billing-service test -- --runInBand
-npm --workspace @veridit/billing-service run build
-```
-
-Expected: exit code 0.
-
-- [ ] **Step 7: Commit**
-
-Run:
-
-```bash
-git add apps/billing-service/src/payments/mercado-pago-payment.provider.ts apps/billing-service/src/payments/mercado-pago-payment.provider.spec.ts apps/billing-service/.env.example
-git commit -m "feat: make mercado pago sandbox checkout explicit"
-```
-
----
-
-## Task 4: Validar Assinatura do Webhook no Billing
-
-**Files:**
-- Create: `apps/billing-service/src/payments/mercado-pago-webhook-signature.ts`
-- Modify: `apps/billing-service/src/app.controller.ts`
-- Modify: `apps/billing-service/src/app.service.ts`
-- Modify: `apps/billing-service/src/app.service.spec.ts`
-
-- [ ] **Step 1: Escrever testes de assinatura**
-
-Adicionar casos em `apps/billing-service/src/app.service.spec.ts`:
-
-- processa webhook sem segredo configurado;
-- rejeita webhook com segredo configurado e `x-signature` ausente;
-- rejeita webhook com `v1` inválido;
-- aceita webhook com HMAC correto.
-
-Expected rejection:
-
-```ts
-await expect(service.handleMercadoPagoWebhook(payload, headers)).rejects.toThrow(BadRequestException);
-```
-
-- [ ] **Step 2: Rodar teste e confirmar falha**
-
-Run:
-
-```bash
-npm --workspace @veridit/billing-service test -- --runInBand
-```
-
-Expected: FAIL porque `handleMercadoPagoWebhook` ainda não recebe headers nem valida assinatura.
-
-- [ ] **Step 3: Criar helper de assinatura**
-
-Criar `apps/billing-service/src/payments/mercado-pago-webhook-signature.ts` com responsabilidade única:
-
-```ts
-export function verifyMercadoPagoWebhookSignature({ dataId, requestId, signature, secret }) { ... }
-```
-
-Regra de manifesto:
-
-```text
-id:{dataId};request-id:{requestId};ts:{ts};
-```
-
-Usar `crypto.createHmac('sha256', secret)` e comparação segura com `timingSafeEqual`.
-
-- [ ] **Step 4: Repassar headers no controller**
-
-Alterar `apps/billing-service/src/app.controller.ts` para chamar:
-
-```ts
-this.appService.handleMercadoPagoWebhook(payload, {
-  xSignature: headers['x-signature'],
-  xRequestId: headers['x-request-id'],
-});
-```
-
-- [ ] **Step 5: Validar antes de consultar pagamento**
-
-No início de `handleMercadoPagoWebhook`, quando `MERCADO_PAGO_WEBHOOK_SECRET` estiver preenchido:
-
-- extrair `data.id` do body/query mesclado;
-- exigir `x-signature`;
-- exigir `x-request-id`;
-- validar HMAC;
-- lançar `BadRequestException` se qualquer verificação falhar.
-
-- [ ] **Step 6: Rodar testes do billing**
-
-Run:
-
-```bash
-npm --workspace @veridit/billing-service test -- --runInBand
-npm --workspace @veridit/billing-service run build
-```
-
-Expected: exit code 0.
-
-- [ ] **Step 7: Commit**
-
-Run:
-
-```bash
-git add apps/billing-service/src/payments/mercado-pago-webhook-signature.ts apps/billing-service/src/app.controller.ts apps/billing-service/src/app.service.ts apps/billing-service/src/app.service.spec.ts
-git commit -m "feat: validate mercado pago webhook signature"
-```
-
----
-
-## Task 5: Conectar Frontend ao Checkout Real
-
-**Files:**
-- Modify: `apps/web/src/lib/gateway.ts`
-- Modify: `apps/web/src/lib/mock-data.ts`
-- Modify: `apps/web/src/components/veridit/payment-client.tsx`
-- Modify: `apps/web/src/app/creditos/page.tsx`
-
-- [ ] **Step 1: Adicionar client real no gateway**
-
-Em `apps/web/src/lib/gateway.ts`, criar:
-
-```ts
-export function createCreditPurchase(payload, idempotencyKey) {
-  return requestGateway('/billing/purchases', {
-    method: 'POST',
-    headers: { 'Idempotency-Key': idempotencyKey },
-    body: JSON.stringify(payload),
-  });
-}
-```
-
-Tipo de retorno:
-
-```ts
-{ purchaseId: string; status: 'PENDING' | 'PAID' | 'CANCELED'; checkoutUrl: string; providerPreferenceId: string }
-```
-
-- [ ] **Step 2: Mapear planos do front para pacotes do backend**
-
-Em `apps/web/src/lib/mock-data.ts`, adicionar em cada plano:
-
-```ts
-gatewayPackageName: 'basic' | 'medium' | 'premium'
-```
-
-Mapeamento:
-
-```text
-initial -> basic
-professional -> medium
-enterprise -> premium
-```
-
-- [ ] **Step 3: Alterar estado da tela de pagamento**
-
-Em `apps/web/src/components/veridit/payment-client.tsx`, adicionar:
-
-```ts
-const [paymentMethod, setPaymentMethod] = useState<'pix' | 'mercado-pago'>('pix');
-```
-
-Usar `onValueChange` no `Tabs` para controlar o método selecionado.
-
-- [ ] **Step 4: Implementar ação Mercado Pago**
-
-Quando `paymentMethod === 'mercado-pago'`:
-
-- gerar `idempotencyKey` com `crypto.randomUUID()`;
-- chamar `createCreditPurchase`;
-- se `result.ok`, redirecionar com `window.location.assign(result.data.checkoutUrl)`;
-- se falhar, exibir `toast.error` com a mensagem do gateway;
-- não chamar `createMockPurchase`.
-
-- [ ] **Step 5: Manter Pix como simulação separada**
-
-Quando `paymentMethod === 'pix'`:
-
-- manter `createMockPurchase` por enquanto;
-- ajustar texto do botão para `Confirmar Pix simulado`;
-- ajustar texto da aba Mercado Pago para `Ir para checkout sandbox`.
-
-- [ ] **Step 6: Atualizar copy da página de créditos**
-
-Em `apps/web/src/app/creditos/page.tsx`, substituir texto que diz apenas “fluxo demonstrativo” por:
-
-```text
-Pix demonstrativo ou Mercado Pago sandbox.
-```
-
-- [ ] **Step 7: Verificar frontend**
+- `statusLabel`: `STARTED -> Em andamento`, `COMPLETED -> Concluido`, `FAILED -> Falhou`;
+- `finishedAtLabel`: usar `formatCaptureDateTime`, que retorna `-` quando nao houver data;
+- `dataTypeLabel`: usar `getCaptureDataTypeLabel`;
+- `responsibleName`: `responsibleUser.fullName` quando existir, senao `Usuario nao carregado`;
+- `responsibleEmail`: `responsibleUser.email` quando existir, senao `-`;
+- `responsibleUserId`: sempre vem de `record.userId`;
+- `hasResponsibleUserProfile`: `true` apenas quando nome/email foram carregados;
+- `resumeHref`: `/captura/:id` apenas quando `record.status === "STARTED"`.
+
+- [ ] **Step 3: Rodar build do web para validar tipos**
 
 Run:
 
@@ -544,328 +246,440 @@ Run:
 npm --workspace @veridit/web run build
 ```
 
-Expected: exit code 0.
-
-- [ ] **Step 8: Commit**
-
-Run:
-
-```bash
-git add apps/web/src/lib/gateway.ts apps/web/src/lib/mock-data.ts apps/web/src/components/veridit/payment-client.tsx apps/web/src/app/creditos/page.tsx
-git commit -m "feat: connect web checkout to mercado pago sandbox"
-```
-
----
-
-## Task 6: Criar Página de Retorno do Checkout
-
-**Files:**
-- Create: `apps/web/src/app/pagamento/retorno/page.tsx`
-- Modify: `apps/billing-service/.env.example`
-
-- [ ] **Step 1: Criar página de retorno**
-
-Criar `apps/web/src/app/pagamento/retorno/page.tsx`.
-
-Ela deve ler `searchParams.status` e renderizar três estados:
+Expected:
 
 ```text
-success -> pagamento recebido pelo Mercado Pago; saldo será confirmado pelo webhook
-pending -> pagamento em análise ou aguardando confirmação
-failure -> pagamento não concluído
+exit code 0
 ```
-
-Adicionar botões:
-
-```text
-Voltar para dashboard -> /dashboard
-Comprar créditos -> /creditos
-```
-
-- [ ] **Step 2: Atualizar URLs no env example**
-
-Em `apps/billing-service/.env.example`:
-
-```env
-FRONTEND_SUCCESS_URL=http://localhost:3000/pagamento/retorno?status=success
-FRONTEND_FAILURE_URL=http://localhost:3000/pagamento/retorno?status=failure
-FRONTEND_PENDING_URL=http://localhost:3000/pagamento/retorno?status=pending
-```
-
-- [ ] **Step 3: Verificar build web**
-
-Run:
-
-```bash
-npm --workspace @veridit/web run build
-```
-
-Expected: exit code 0.
 
 - [ ] **Step 4: Commit**
 
-Run:
-
 ```bash
-git add apps/web/src/app/pagamento/retorno/page.tsx apps/billing-service/.env.example
-git commit -m "feat: add mercado pago checkout return page"
+git add apps/web/src/lib/capture-record-view.ts apps/web/src/lib/capture-record-detail-view.ts
+git commit -m "feat: add capture record detail view model"
 ```
 
 ---
 
-## Task 7: Documentar Sandbox e URLs Públicas
+## Task 2: Pagina Real `/registros/:id`
 
 **Files:**
-- Modify: `docs/02-como-rodar.md`
+- Modify: `apps/web/src/app/registros/[id]/page.tsx`
+
+- [ ] **Step 1: Remover dependencias mockadas**
+
+Em `apps/web/src/app/registros/[id]/page.tsx`, remover imports de:
+
+```text
+getRecordById
+chainOfCustody
+RecordKind
+RecordStatus
+```
+
+Tambem remover da UI qualquer campo que hoje dependa apenas de mock:
+
+```text
+hash
+duration
+size
+relatorio disponivel
+baixar ZIP
+cadeia de custodia mockada
+```
+
+- [ ] **Step 2: Buscar o registro real**
+
+Na pagina server component, manter o padrao do Next.js 16:
+
+```text
+params: Promise<{ id: string }>
+const { id } = await params
+```
+
+Usar `getCaptureRecord(id)`.
+
+Se a resposta falhar:
+
+- renderizar dentro de `AppShell active="dashboard"`;
+- mostrar titulo `Registro nao encontrado`;
+- mostrar a mensagem retornada pelo gateway;
+- mostrar botao para `/dashboard`;
+- nao usar dados ficticios.
+
+- [ ] **Step 3: Buscar o usuario responsavel**
+
+Depois que `getCaptureRecord(id)` retornar `ok`, usar `record.userId` para chamar `getUserProfile(record.userId)`.
+
+Regra:
+
+- se `getUserProfile` retornar `ok`, passar `result.data` para `toCaptureRecordDetailView`;
+- se falhar, passar apenas o registro e guardar a mensagem de erro para um alerta;
+- nao bloquear a visualizacao do registro quando so o perfil falhar.
+
+- [ ] **Step 4: Renderizar os campos do REQ 13**
+
+Renderizar uma tela com estes blocos:
+
+```text
+Cabecalho:
+  titulo do registro
+  status
+  URL/site
+
+Metadados do registro:
+  ID do registro
+  Data/hora inicio
+  Data/hora fim
+  Tipo de dado registrado
+
+Informacoes dos dados:
+  Numero de imagens
+  Numero de videos
+
+Usuario responsavel:
+  Nome
+  Email
+  ID tecnico do usuario
+```
+
+Usar `StatusPill` para status.
+
+Se `hasResponsibleUserProfile` for `false`, exibir um `Alert` discreto informando que nome/email nao puderam ser carregados e que o `userId` tecnico foi preservado.
+
+- [ ] **Step 5: Ajustar acoes da tela**
+
+Mostrar:
+
+```text
+Voltar para Dashboard -> /dashboard
+Nova captura -> /captura
+Continuar captura -> /captura/:id, apenas quando resumeHref existir
+```
+
+Nao mostrar:
+
+```text
+Ver relatorio
+Baixar ZIP
+```
+
+Motivo: esses botoes pertencem ao REQ 14 e REQ 15 e hoje levariam a fluxos mockados ou incompletos.
+
+- [ ] **Step 6: Rodar build do web**
+
+Run:
+
+```bash
+npm --workspace @veridit/web run build
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/web/src/app/registros/[id]/page.tsx
+git commit -m "feat: show real capture record details"
+```
+
+---
+
+## Task 3: Dashboard Apontando Para Detalhes Reais
+
+**Files:**
+- Modify: `apps/web/src/components/veridit/dashboard-client.tsx`
+- Modify: `apps/web/src/components/veridit/evidence-card.tsx`
+- Modify: `apps/web/src/lib/capture-record-view.ts`
+
+- [ ] **Step 1: Ajustar a coluna `Detalhes` no dashboard**
+
+Em `apps/web/src/components/veridit/dashboard-client.tsx`, a coluna `Detalhes` deve usar:
+
+```text
+href = record.detailHref
+label = Abrir
+```
+
+Aceite:
+
+- o link gerado deve ser `/registros/:id`;
+- a coluna nao deve apontar para `/captura/concluida?recordId=...`.
+
+- [ ] **Step 2: Preservar retomada de captura sem confundir com detalhes**
+
+Se for mantida uma acao para registros `STARTED`, ela deve aparecer como acao separada:
+
+```text
+Continuar -> /captura/:id
+```
+
+Nao trocar o significado da coluna `Detalhes`.
+
+- [ ] **Step 3: Ajustar card mobile**
+
+Em `apps/web/src/components/veridit/evidence-card.tsx`, garantir que o link principal usa `record.detailHref`.
+
+Aceite:
+
+- tocar no card mobile abre `/registros/:id`;
+- o card nao usa `/captura/concluida`.
+
+- [ ] **Step 4: Rodar teste de arquitetura**
+
+Run:
+
+```bash
+npm --workspace @veridit/web run test:architecture
+```
+
+Expected nesta etapa:
+
+```text
+falha enquanto o teste ainda espera /captura/concluida
+```
+
+Esta falha e esperada antes da Task 4.
+
+- [ ] **Step 5: Rodar build do web**
+
+Run:
+
+```bash
+npm --workspace @veridit/web run build
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/web/src/components/veridit/dashboard-client.tsx apps/web/src/components/veridit/evidence-card.tsx apps/web/src/lib/capture-record-view.ts
+git commit -m "feat: route record list to real details"
+```
+
+---
+
+## Task 4: Teste De Arquitetura Web
+
+**Files:**
+- Modify: `apps/web/test/gateway-architecture.spec.mjs`
+
+- [ ] **Step 1: Adicionar leitura da pagina de detalhes**
+
+No teste, ler:
+
+```text
+src/app/registros/[id]/page.tsx
+```
+
+Guardar em uma constante chamada `recordDetailsPage`.
+
+- [ ] **Step 2: Bloquear retorno para mock na pagina de detalhes**
+
+Adicionar asserts garantindo que `recordDetailsPage`:
+
+```text
+nao importa "@/lib/mock-data"
+nao usa getRecordById
+nao usa chainOfCustody
+usa getCaptureRecord
+usa getUserProfile
+usa toCaptureRecordDetailView
+```
+
+- [ ] **Step 3: Atualizar asserts de rota da listagem**
+
+Trocar os asserts antigos que proibiam `/registros/:id`.
+
+Novo comportamento esperado:
+
+```text
+capture-record-view deve construir /registros/${encodeURIComponent(record.id)}
+dashboard ou evidence-card devem usar record.detailHref
+nenhuma acao de detalhe deve apontar para /captura/concluida
+```
+
+Manter permitido `/captura/:id` apenas para retomada de captura iniciada.
+
+- [ ] **Step 4: Rodar teste de arquitetura**
+
+Run:
+
+```bash
+npm --workspace @veridit/web run test:architecture
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/test/gateway-architecture.spec.mjs
+git commit -m "test: require real record details page"
+```
+
+---
+
+## Task 5: Docs Do Fluxo REQ 13
+
+**Files:**
 - Modify: `docs/04-servicos.md`
 
-- [ ] **Step 1: Atualizar docs de ambiente**
+- [ ] **Step 1: Documentar rotas usadas pelo detalhe**
 
-Em `docs/02-como-rodar.md`, adicionar seção “Mercado Pago sandbox” com:
-
-```env
-MERCADO_PAGO_ENVIRONMENT=sandbox
-MERCADO_PAGO_ACCESS_TOKEN=TEST-...
-MERCADO_PAGO_WEBHOOK_SECRET=...
-MERCADO_PAGO_WEBHOOK_URL=https://<tunnel>/billing/payments/mercado-pago/webhook
-FRONTEND_SUCCESS_URL=http://localhost:3000/pagamento/retorno?status=success
-FRONTEND_FAILURE_URL=http://localhost:3000/pagamento/retorno?status=failure
-FRONTEND_PENDING_URL=http://localhost:3000/pagamento/retorno?status=pending
-```
-
-Incluir regra explícita:
+Na lista de rotas do API Gateway, garantir que constam:
 
 ```text
-Nunca commitar tokens TEST ou segredos reais.
+- GET /capture/records/:recordId
+- GET /identity/users/:id
 ```
 
-- [ ] **Step 2: Documentar tunnel HTTPS**
+- [ ] **Step 2: Atualizar descricao dos servicos envolvidos**
 
-Ainda em `docs/02-como-rodar.md`, explicar:
-
-- Mercado Pago precisa alcançar `MERCADO_PAGO_WEBHOOK_URL` via HTTPS;
-- para localhost, usar Cloudflare Tunnel, ngrok ou equivalente;
-- se o webhook passar pelo gateway, o tunnel deve apontar para `http://localhost:3001`;
-- se o webhook passar direto no billing, o tunnel deve apontar para `http://localhost:3102`.
-
-Escolha recomendada para esta implementação:
+Na secao do `capture-service`, registrar:
 
 ```text
-Gateway público -> /billing/payments/mercado-pago/webhook
+Responsavel por registros de conteudo, sessoes de captura e assets capturados. Fornece os metadados e contagens usados no detalhe do REQ 13.
 ```
 
-- [ ] **Step 3: Atualizar lista de rotas**
-
-Em `docs/04-servicos.md`, adicionar:
+Na secao do `identity-service`, registrar:
 
 ```text
-POST /billing/purchases
-POST /billing/payments/mercado-pago/webhook
+Fornece nome e email do usuario responsavel exibidos nos detalhes do registro.
 ```
 
-Atualizar descrição do billing para dizer que:
-
-- compra real cria preferência Mercado Pago;
-- compra mock continua disponível para Pix/demo;
-- saldo só é creditado após webhook aprovado.
-
-- [ ] **Step 4: Commit**
-
-Run:
+- [ ] **Step 3: Commit**
 
 ```bash
-git add docs/02-como-rodar.md docs/04-servicos.md
-git commit -m "docs: document mercado pago sandbox flow"
+git add docs/04-servicos.md
+git commit -m "docs: document record details flow"
 ```
 
 ---
 
-## Task 8: Verificação Manual de Sandbox
+## Task 6: Verificacao Final
 
 **Files:**
-- No code files.
-- Use local `.env` files only; these files stay outside Git.
+- No code changes expected.
 
-- [ ] **Step 1: Preparar ambientes**
-
-Preencher `apps/billing-service/.env`:
-
-```env
-MERCADO_PAGO_ENVIRONMENT=sandbox
-MERCADO_PAGO_ACCESS_TOKEN=<token TEST do Mercado Pago>
-MERCADO_PAGO_WEBHOOK_SECRET=<segredo da aplicação Mercado Pago>
-MERCADO_PAGO_WEBHOOK_URL=https://<tunnel>/billing/payments/mercado-pago/webhook
-```
-
-- [ ] **Step 2: Subir infra e apps**
+- [ ] **Step 1: Rodar teste de arquitetura web**
 
 Run:
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d
-npm run prisma:generate
-npm run prisma:migrate
+npm --workspace @veridit/web run test:architecture
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 2: Rodar build do web**
+
+Run:
+
+```bash
+npm --workspace @veridit/web run build
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 3: Rodar testes/builds dos servicos afetados indiretamente**
+
+Mesmo sem mudanca backend, rodar para garantir contratos e gateway:
+
+```bash
+npm --workspace @veridit/contracts run build
+npm --workspace @veridit/api-gateway run test
+npm --workspace @veridit/api-gateway run build
+```
+
+Expected:
+
+```text
+todos com exit code 0
+```
+
+- [ ] **Step 4: Rodar build geral**
+
+Run:
+
+```bash
+npm run build
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 5: Verificacao manual**
+
+Subir ambiente:
+
+```bash
 npm run dev
 ```
 
-Expected:
+Fluxo no navegador:
 
 ```text
-frontend em http://localhost:3000
-api-gateway em http://localhost:3001
-billing-service em http://localhost:3102
-```
-
-- [ ] **Step 3: Criar tunnel HTTPS para o gateway**
-
-Exemplo com Cloudflare Tunnel:
-
-```bash
-cloudflared tunnel --url http://localhost:3001
-```
-
-Configurar `MERCADO_PAGO_WEBHOOK_URL` com a URL pública gerada:
-
-```text
-https://<tunnel>/billing/payments/mercado-pago/webhook
-```
-
-- [ ] **Step 4: Executar compra sandbox pelo navegador**
-
-Fluxo:
-
-1. Abrir `http://localhost:3000/pagamento`.
-2. Selecionar aba `Mercado Pago`.
-3. Clicar no botão de checkout sandbox.
-4. Confirmar que a URL aberta contém domínio do Mercado Pago sandbox.
-5. Pagar com usuário/cartão de teste do Mercado Pago.
-6. Confirmar retorno em `/pagamento/retorno?status=success` ou `pending`.
-
-- [ ] **Step 5: Confirmar efeitos no banco**
-
-Conferir no banco `veridit_billing`:
-
-```sql
-SELECT id, status, "providerPreferenceId", "providerPaymentId", "paidAt"
-FROM "CreditPurchase"
-ORDER BY "createdAt" DESC
-LIMIT 3;
-
-SELECT "userId", credits
-FROM "UserCreditBalance"
-ORDER BY "updatedAt" DESC
-LIMIT 3;
-```
-
-Expected:
-
-```text
-CreditPurchase.status = PAID depois do webhook aprovado
-UserCreditBalance.credits incrementado uma única vez
-```
-
-- [ ] **Step 6: Reenviar webhook duplicado**
-
-Usar a ferramenta de teste do Mercado Pago ou reenviar a mesma notificação capturada.
-
-Expected:
-
-```text
-CreditPurchase permanece PAID
-UserCreditBalance não recebe créditos duplicados
+1. Fazer login.
+2. Abrir /captura.
+3. Criar uma captura.
+4. Tirar pelo menos um print ou gravar um video.
+5. Finalizar a captura.
+6. Abrir /dashboard.
+7. Clicar em Abrir na coluna Detalhes.
+8. Confirmar que a URL e /registros/:id.
+9. Confirmar que aparecem id, titulo, inicio, fim, tipo, imagens, videos, nome e email do responsavel.
+10. Confirmar que nao aparecem dados mockados como hash ficticio, tamanho ficticio ou cadeia de custodia fixa.
 ```
 
 ---
 
-## Task 9: Verificação Automatizada Final
+## Acceptance Criteria
 
-**Files:**
-- All modified files from previous tasks.
+- `/registros/:id` usa dados reais de `getCaptureRecord(id)`.
+- `/registros/:id` usa `getUserProfile(record.userId)` para exibir nome e email do usuario responsavel.
+- `/registros/:id` nao importa nem usa `apps/web/src/lib/mock-data.ts`.
+- A tela exibe todos os campos do Apêndice A para `Detalhes dos registros`.
+- Dashboard e cards mobile abrem `/registros/:id` para detalhes.
+- Fluxos de relatorio e ZIP nao sao apresentados como prontos no REQ 13.
+- Frontend continua chamando somente o API Gateway.
+- Teste de arquitetura web passa.
+- Build do web passa.
+- Build geral passa.
 
-- [ ] **Step 1: Rodar testes unitários focados**
+## Risks And Controls
 
-Run:
-
-```bash
-npm --workspace @veridit/api-gateway test -- --runInBand
-npm --workspace @veridit/billing-service test -- --runInBand
-```
-
-Expected: all test suites pass.
-
-- [ ] **Step 2: Rodar geração Prisma e builds**
-
-Run:
-
-```bash
-npm --workspace @veridit/billing-service run prisma:generate
-npm --workspace @veridit/contracts run build
-npm --workspace @veridit/api-gateway run build
-npm --workspace @veridit/billing-service run build
-npm --workspace @veridit/web run build
-```
-
-Expected: all commands exit 0.
-
-- [ ] **Step 3: Checar conflitos e whitespace**
-
-Run:
-
-```bash
-rg -n "<<<<<<<|=======|>>>>>>>" .
-git diff --check
-```
-
-Expected:
-
-```text
-rg exits with no matches
-git diff --check exits 0
-```
-
-- [ ] **Step 4: Revisar Git antes do commit final**
-
-Run:
-
-```bash
-git status --short
-git diff --stat
-```
-
-Expected:
-
-```text
-somente arquivos do plano de Mercado Pago aparecem alterados
-arquivos .env locais não aparecem
-```
-
-- [ ] **Step 5: Commit final de integração**
-
-Run:
-
-```bash
-git add apps docs package-lock.json
-git commit -m "feat: complete mercado pago sandbox checkout"
-```
-
----
-
-## Critérios de Aceite
-
-- Usuário consegue iniciar compra Mercado Pago no frontend sem usar `/billing/purchases/mock`.
-- API Gateway encaminha `POST /billing/purchases` e `POST /billing/payments/mercado-pago/webhook`.
-- Billing cria preferência com `external_reference = purchaseId`.
-- Sandbox usa `sandbox_init_point`.
-- Mercado Pago consegue chamar webhook público HTTPS.
-- Webhook aprovado muda compra para `PAID` e incrementa créditos.
-- Webhook duplicado não duplica créditos.
-- Return page informa `success`, `pending` e `failure`.
-- Documentação ensina configurar token TEST, webhook secret, tunnel e URLs.
-- Nenhum segredo é commitado.
-- Builds e testes focados passam.
+- **Sem autorizacao backend forte:** qualquer usuario com um `recordId` pode tentar buscar detalhes enquanto JWT/backend guard nao estiver implementado. Controlar isso em requisito separado de seguranca/autenticacao.
+- **Perfil do usuario pode falhar:** a pagina deve continuar exibindo o registro e mostrar `userId`; nome/email aparecem quando `identity-service` responder.
+- **Pagina de relatorio ainda mockada:** remover links de relatorio/ZIP desta tela evita afirmar que REQ 14/15 estao prontos.
+- **`/captura/concluida` ainda existe:** manter como tela de pos-finalizacao, mas o fluxo oficial de detalhe listado deve ser `/registros/:id`.
 
 ## Self-Review
 
-- Spec coverage: frontend real, gateway webhook, billing sandbox, assinatura, return pages, docs e verificação manual estão cobertos.
-- Placeholder scan: o plano não usa marcadores de trabalho indefinido.
-- Type consistency: nomes usados no plano batem com os nomes atuais: `CreateCreditPurchaseResponse`, `createCreditPurchase`, `handleMercadoPagoWebhook`, `providerPreferenceId`, `checkoutUrl`, `MERCADO_PAGO_WEBHOOK_URL`.
+- Spec coverage: o plano cobre id, titulo, inicio, fim, tipo de dados, numero de imagens, numero de videos e usuario responsavel com nome/email.
+- Placeholder scan: nao ha marcadores de trabalho indefinido nem etapa sem criterio de aceite.
+- Type consistency: `CaptureRecordDetailsResponse`, `UserResponse`, `toCaptureRecordDetailView`, `detailHref` e `resumeHref` sao usados de forma consistente.

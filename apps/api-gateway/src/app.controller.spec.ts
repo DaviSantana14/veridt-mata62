@@ -1,11 +1,20 @@
 import { BadRequestException } from '@nestjs/common';
 import type {
+  BrowserInputRequest,
+  CaptureAssetResponse,
+  CaptureFrameResponse,
+  CaptureRecordDetailsResponse,
+  CaptureVideoStateResponse,
+  CompleteCaptureResponse,
   CreateCardPaymentRequest,
   CreateCardPaymentResponse,
   CreateCreditPurchaseRequest,
   CreateCreditPurchaseResponse,
   CreateEmbeddedCreditPurchaseResponse,
+  ListCaptureRecordsResponse,
   SimulatePaymentResponse,
+  StartCaptureRequest,
+  StartCaptureSessionResponse,
   UserCreditBalanceResponse,
 } from '@veridit/contracts';
 import { AppController } from './app.controller';
@@ -66,6 +75,97 @@ const creditBalanceResponse: UserCreditBalanceResponse = {
   userId: 'user-1',
   credits: 15,
   updatedAt: '2026-05-29T12:00:00.000Z',
+};
+
+const startCaptureBody: StartCaptureRequest = {
+  userId: 'user-1',
+  siteUrl: 'https://example.com',
+};
+
+const startCaptureResponse: StartCaptureSessionResponse = {
+  id: 'record-1',
+  userId: 'user-1',
+  title: 'Registro de conteudo',
+  status: 'STARTED',
+  siteUrl: 'https://example.com',
+  startedAt: '2026-07-05T12:00:00.000Z',
+  viewport: {
+    width: 1366,
+    height: 768,
+  },
+};
+
+const captureRecordDetailsResponse: CaptureRecordDetailsResponse = {
+  id: 'record-1',
+  userId: 'user-1',
+  title: 'Registro de conteudo',
+  status: 'STARTED',
+  siteUrl: 'https://example.com',
+  startedAt: '2026-07-05T12:00:00.000Z',
+  imageCount: 2,
+  videoCount: 1,
+};
+
+const listCaptureRecordsResponse: ListCaptureRecordsResponse = {
+  userId: 'user-1',
+  records: [
+    {
+      ...captureRecordDetailsResponse,
+      details: 'Concluido com evidencias.',
+    },
+  ],
+};
+
+const captureFrameResponse: CaptureFrameResponse = {
+  recordId: 'record-1',
+  mimeType: 'image/jpeg',
+  imageBase64: 'base64-frame',
+  currentUrl: 'https://example.com',
+  capturedAt: '2026-07-05T12:00:00.000Z',
+  viewport: {
+    width: 1366,
+    height: 768,
+  },
+};
+
+const browserInputBody: BrowserInputRequest = {
+  type: 'click',
+  x: 100,
+  y: 120,
+};
+
+const navigateBody = {
+  siteUrl: 'https://www.ufba.br',
+};
+
+const navigateResponse = {
+  accepted: true,
+  currentUrl: 'https://www.ufba.br/',
+};
+
+const screenshotResponse: CaptureAssetResponse = {
+  id: 'asset-1',
+  recordId: 'record-1',
+  type: 'IMAGE',
+  fileName: 'screenshot.png',
+  fileSizeBytes: 1200,
+  createdAt: '2026-07-05T12:00:00.000Z',
+};
+
+const videoStateResponse: CaptureVideoStateResponse = {
+  recording: true,
+};
+
+const completeCaptureResponse: CompleteCaptureResponse = {
+  id: 'record-1',
+  userId: 'user-1',
+  title: 'Registro de conteudo',
+  siteUrl: 'https://example.com',
+  status: 'COMPLETED',
+  startedAt: '2026-07-05T12:00:00.000Z',
+  finishedAt: '2026-07-05T12:05:00.000Z',
+  imageCount: 1,
+  videoCount: 1,
 };
 
 describe('Api Gateway AppController billing purchases', () => {
@@ -194,5 +294,114 @@ describe('Api Gateway AppController billing purchases', () => {
       headers,
       query,
     );
+  });
+});
+
+describe('Api Gateway AppController capture records', () => {
+  let controller: AppController;
+  let appService: {
+    startCapture: jest.Mock;
+    getCaptureRecord: jest.Mock;
+    listCaptureRecords: jest.Mock;
+    getCaptureFrame: jest.Mock;
+    sendCaptureInput: jest.Mock;
+    navigateCapture: jest.Mock;
+    captureScreenshot: jest.Mock;
+    startCaptureVideo: jest.Mock;
+    stopCaptureVideo: jest.Mock;
+    completeCapture: jest.Mock;
+  };
+
+  beforeEach(() => {
+    appService = {
+      startCapture: jest.fn().mockResolvedValue(startCaptureResponse),
+      getCaptureRecord: jest
+        .fn()
+        .mockResolvedValue(captureRecordDetailsResponse),
+      listCaptureRecords: jest
+        .fn()
+        .mockResolvedValue(listCaptureRecordsResponse),
+      getCaptureFrame: jest.fn().mockResolvedValue(captureFrameResponse),
+      sendCaptureInput: jest.fn().mockResolvedValue({ accepted: true }),
+      navigateCapture: jest.fn().mockResolvedValue(navigateResponse),
+      captureScreenshot: jest.fn().mockResolvedValue(screenshotResponse),
+      startCaptureVideo: jest.fn().mockResolvedValue(videoStateResponse),
+      stopCaptureVideo: jest
+        .fn()
+        .mockResolvedValue({ ...videoStateResponse, recording: false }),
+      completeCapture: jest.fn().mockResolvedValue(completeCaptureResponse),
+    };
+    controller = new AppController(appService as unknown as AppService);
+  });
+
+  it('starts capture records through the service', async () => {
+    await expect(controller.startCapture(startCaptureBody)).resolves.toEqual(
+      startCaptureResponse,
+    );
+
+    expect(appService.startCapture).toHaveBeenCalledWith(startCaptureBody);
+  });
+
+  it('proxies browser frame reads', async () => {
+    await expect(controller.getCaptureRecord('record-1')).resolves.toEqual(
+      captureRecordDetailsResponse,
+    );
+    await expect(controller.getCaptureFrame('record-1')).resolves.toEqual(
+      captureFrameResponse,
+    );
+
+    expect(appService.getCaptureRecord).toHaveBeenCalledWith('record-1');
+    expect(appService.getCaptureFrame).toHaveBeenCalledWith('record-1');
+  });
+
+  it('proxies user capture record listing', async () => {
+    await expect(controller.listCaptureRecords('user-1')).resolves.toEqual(
+      listCaptureRecordsResponse,
+    );
+
+    expect(appService.listCaptureRecords).toHaveBeenCalledWith('user-1');
+  });
+
+  it('proxies browser input commands', async () => {
+    await expect(
+      controller.sendCaptureInput('record-1', browserInputBody),
+    ).resolves.toEqual({ accepted: true });
+
+    expect(appService.sendCaptureInput).toHaveBeenCalledWith(
+      'record-1',
+      browserInputBody,
+    );
+  });
+
+  it('proxies direct browser navigation commands', async () => {
+    await expect(
+      controller.navigateCapture('record-1', navigateBody),
+    ).resolves.toEqual(navigateResponse);
+
+    expect(appService.navigateCapture).toHaveBeenCalledWith(
+      'record-1',
+      navigateBody,
+    );
+  });
+
+  it('proxies asset and completion commands', async () => {
+    await expect(controller.captureScreenshot('record-1')).resolves.toEqual(
+      screenshotResponse,
+    );
+    await expect(controller.startCaptureVideo('record-1')).resolves.toEqual(
+      videoStateResponse,
+    );
+    await expect(controller.stopCaptureVideo('record-1')).resolves.toEqual({
+      ...videoStateResponse,
+      recording: false,
+    });
+    await expect(controller.completeCapture('record-1')).resolves.toEqual(
+      completeCaptureResponse,
+    );
+
+    expect(appService.captureScreenshot).toHaveBeenCalledWith('record-1');
+    expect(appService.startCaptureVideo).toHaveBeenCalledWith('record-1');
+    expect(appService.stopCaptureVideo).toHaveBeenCalledWith('record-1');
+    expect(appService.completeCapture).toHaveBeenCalledWith('record-1');
   });
 });

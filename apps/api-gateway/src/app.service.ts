@@ -2,7 +2,14 @@ import { BadGatewayException, HttpException, Injectable } from '@nestjs/common';
 import {
   SERVICE_PORTS,
   type AuthResponse,
+  type BrowserInputRequest,
+  type BrowserInputResponse,
+  type CaptureAssetResponse,
+  type CaptureFrameResponse,
+  type CaptureRecordDetailsResponse,
+  type CaptureVideoStateResponse,
   type ChangePasswordRequest,
+  type CompleteCaptureResponse,
   type ContentRecordResponse,
   type CreateCardPaymentRequest,
   type CreateCardPaymentResponse,
@@ -11,12 +18,16 @@ import {
   type CreateEmbeddedCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
+  type ListCaptureRecordsResponse,
   type LoginUserRequest,
+  type NavigateCaptureRequest,
+  type NavigateCaptureResponse,
   type PurchaseCreditsRequest,
   type RegisterUserRequest,
   type ServiceName,
   type SimulatePaymentResponse,
   type StartCaptureRequest,
+  type StartCaptureSessionResponse,
   type UpdateUserProfileRequest,
   type UserCreditBalanceResponse,
   type UserResponse,
@@ -273,12 +284,145 @@ export class AppService {
     );
   }
 
+  startCapture(
+    body: StartCaptureRequest,
+  ): Promise<StartCaptureSessionResponse> {
+    return this.postToService(
+      'capture-service',
+      this.urls.capture,
+      '/records',
+      body,
+      {},
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  getCaptureRecord(recordId: string): Promise<CaptureRecordDetailsResponse> {
+    return this.getFromService(
+      'capture-service',
+      this.urls.capture,
+      `/records/${recordId}`,
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  listCaptureRecords(userId: string): Promise<ListCaptureRecordsResponse> {
+    return this.getFromService(
+      'capture-service',
+      this.urls.capture,
+      `/users/${userId}/records`,
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  getCaptureFrame(recordId: string): Promise<CaptureFrameResponse> {
+    return this.getFromService(
+      'capture-service',
+      this.urls.capture,
+      `/records/${recordId}/frame`,
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  sendCaptureInput(
+    recordId: string,
+    body: BrowserInputRequest,
+  ): Promise<BrowserInputResponse> {
+    return this.postToService(
+      'capture-service',
+      this.urls.capture,
+      `/records/${recordId}/input`,
+      body,
+      {},
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  navigateCapture(
+    recordId: string,
+    body: NavigateCaptureRequest,
+  ): Promise<NavigateCaptureResponse> {
+    return this.postToService(
+      'capture-service',
+      this.urls.capture,
+      `/records/${recordId}/navigate`,
+      body,
+      {},
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  captureScreenshot(recordId: string): Promise<CaptureAssetResponse> {
+    return this.postToService(
+      'capture-service',
+      this.urls.capture,
+      `/records/${recordId}/screenshots`,
+      {},
+      {},
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  startCaptureVideo(recordId: string): Promise<CaptureVideoStateResponse> {
+    return this.postToService(
+      'capture-service',
+      this.urls.capture,
+      `/records/${recordId}/video/start`,
+      {},
+      {},
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  stopCaptureVideo(recordId: string): Promise<CaptureVideoStateResponse> {
+    return this.postToService(
+      'capture-service',
+      this.urls.capture,
+      `/records/${recordId}/video/stop`,
+      {},
+      {},
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  completeCapture(recordId: string): Promise<CompleteCaptureResponse> {
+    return this.postToService(
+      'capture-service',
+      this.urls.capture,
+      `/records/${recordId}/complete`,
+      {},
+      {},
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
   private getFromService<T>(
     service: ServiceName,
     baseUrl: string,
     path: string,
+    options: { preserveClientErrors?: boolean } = {},
   ): Promise<T> {
-    return this.request<T>(service, `${baseUrl}${path}`);
+    return this.request<T>(service, `${baseUrl}${path}`, undefined, options);
   }
 
   private postToService<T>(

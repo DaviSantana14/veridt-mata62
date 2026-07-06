@@ -7,8 +7,8 @@ export default function CapturePage() {
     <AppShell active="capture">
       <div className="flex flex-col gap-8">
         <PageHeading
-          title="Registrar nova evidência digital"
-          description="Configure captura, perfil técnico e pré-visualização antes de consumir crédito."
+          title="Nova captura"
+          description="Informe o link para abrir uma sessão navegável de registro."
         />
         <CaptureClient />
       </div>

@@ -28,6 +28,7 @@ build
 dist
 *.tsbuildinfo
 apps/*/src/generated/prisma
+apps/capture-service/storage/
 
 
 # Debug

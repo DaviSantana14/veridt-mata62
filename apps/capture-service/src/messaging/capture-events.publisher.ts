@@ -12,7 +12,7 @@ import {
 
 @Injectable()
 export class CaptureEventsPublisher implements OnModuleDestroy {
-  private readonly client: ClientProxy = ClientProxyFactory.create({
+  private readonly reportsClient: ClientProxy = ClientProxyFactory.create({
     transport: Transport.RMQ,
     options: {
       urls: [process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672'],
@@ -23,16 +23,41 @@ export class CaptureEventsPublisher implements OnModuleDestroy {
     },
   });
 
-  publishCaptureCompleted(event: CaptureCompletedEvent): void {
-    this.client.emit(VERIDIT_EVENTS.captureCompleted, event).subscribe({
-      error: (error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`Failed to publish capture completed event: ${message}`);
+  private readonly notificationsClient: ClientProxy = ClientProxyFactory.create({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672'],
+      queue: RMQ_QUEUES.notifications,
+      queueOptions: {
+        durable: true,
       },
-    });
+    },
+  });
+
+  publishCaptureCompleted(event: CaptureCompletedEvent): void {
+    this.emitCaptureCompleted(this.reportsClient, 'reports', event);
+    this.emitCaptureCompleted(this.notificationsClient, 'notifications', event);
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.client.close();
+    await Promise.all([
+      this.reportsClient.close(),
+      this.notificationsClient.close(),
+    ]);
+  }
+
+  private emitCaptureCompleted(
+    client: ClientProxy,
+    queueName: 'reports' | 'notifications',
+    event: CaptureCompletedEvent,
+  ): void {
+    client.emit(VERIDIT_EVENTS.captureCompleted, event).subscribe({
+      error: (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(
+          `Failed to publish capture completed event to ${queueName}: ${message}`,
+        );
+      },
+    });
   }
 }

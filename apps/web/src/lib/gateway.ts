@@ -1,9 +1,21 @@
 import type {
+  BrowserInputRequest,
+  BrowserInputResponse,
+  CaptureAssetResponse,
+  CaptureFrameResponse,
+  CaptureRecordDetailsResponse,
+  CaptureVideoStateResponse,
+  CompleteCaptureResponse,
   CreateCardPaymentRequest,
   CreateCardPaymentResponse,
   CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
+  ListCaptureRecordsResponse,
+  NavigateCaptureRequest,
+  NavigateCaptureResponse,
   SimulatePaymentResponse,
+  StartCaptureRequest,
+  StartCaptureSessionResponse,
   UserCreditBalanceResponse,
 } from "@veridit/contracts";
 
@@ -18,11 +30,15 @@ type GatewayResult<T> =
 async function requestGateway<T>(
   path: string,
   init?: RequestInit,
+  options: { timeoutMs?: number } = {},
 ): Promise<GatewayResult<T>> {
   try {
     const url = `${BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      options.timeoutMs ?? REQUEST_TIMEOUT_MS,
+    );
 
     const response = await fetch(url, {
       ...init,
@@ -73,6 +89,124 @@ export function startMockCapture(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function startCapture(payload: StartCaptureRequest) {
+  return requestGateway<StartCaptureSessionResponse>(
+    "/capture/records",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    {
+      timeoutMs: 30000,
+    },
+  );
+}
+
+export function getCaptureFrame(recordId: string) {
+  return requestGateway<CaptureFrameResponse>(
+    `/capture/records/${recordId}/frame`,
+    {
+      method: "GET",
+      cache: "no-store",
+    },
+  );
+}
+
+export function getCaptureRecord(recordId: string) {
+  return requestGateway<CaptureRecordDetailsResponse>(
+    `/capture/records/${recordId}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    },
+  );
+}
+
+export function listCaptureRecords(userId: string) {
+  return requestGateway<ListCaptureRecordsResponse>(
+    `/capture/users/${userId}/records`,
+    {
+      method: "GET",
+      cache: "no-store",
+    },
+  );
+}
+
+export function sendCaptureInput(
+  recordId: string,
+  payload: BrowserInputRequest,
+) {
+  return requestGateway<BrowserInputResponse>(
+    `/capture/records/${recordId}/input`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function navigateCapture(
+  recordId: string,
+  payload: NavigateCaptureRequest,
+) {
+  return requestGateway<NavigateCaptureResponse>(
+    `/capture/records/${recordId}/navigate`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    {
+      timeoutMs: 30000,
+    },
+  );
+}
+
+export function captureScreenshot(recordId: string) {
+  return requestGateway<CaptureAssetResponse>(
+    `/capture/records/${recordId}/screenshots`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+    {
+      timeoutMs: 20000,
+    },
+  );
+}
+
+export function startCaptureVideo(recordId: string) {
+  return requestGateway<CaptureVideoStateResponse>(
+    `/capture/records/${recordId}/video/start`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export function stopCaptureVideo(recordId: string) {
+  return requestGateway<CaptureVideoStateResponse>(
+    `/capture/records/${recordId}/video/stop`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+    {
+      timeoutMs: 20000,
+    },
+  );
+}
+
+export function completeCapture(recordId: string) {
+  return requestGateway<CompleteCaptureResponse>(
+    `/capture/records/${recordId}/complete`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+  );
 }
 
 export function createMockPurchase(payload: {
