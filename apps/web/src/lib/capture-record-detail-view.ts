@@ -6,7 +6,8 @@ import type {
 import {
   formatCaptureDateTime,
   getCaptureDataTypeLabel,
-} from "@/lib/capture-record-view";
+  getCaptureResumeHref,
+} from "@/lib/capture-record-formatters";
 
 export type CaptureRecordDetailView = {
   id: string;
@@ -53,8 +54,6 @@ export function toCaptureRecordDetailView(
     responsibleEmail: responsibleUser?.email ?? "-",
     responsibleUserId: record.userId,
     hasResponsibleUserProfile: Boolean(responsibleUser),
-    resumeHref: isStarted
-      ? `/captura/${encodeURIComponent(record.id)}`
-      : undefined,
+    resumeHref: isStarted ? getCaptureResumeHref(record.id) : undefined,
   };
 }

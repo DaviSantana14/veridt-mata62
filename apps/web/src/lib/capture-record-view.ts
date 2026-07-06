@@ -3,11 +3,12 @@ import type {
   CaptureRecordStatus,
 } from "@veridit/contracts";
 
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
-  dateStyle: "short",
-  timeStyle: "short",
-  timeZone: "America/Sao_Paulo",
-});
+import {
+  formatCaptureDateTime,
+  getCaptureDataTypeLabel,
+  getCaptureDetailHref,
+  getCaptureResumeHref,
+} from "@/lib/capture-record-formatters";
 
 export type CaptureRecordView = {
   id: string;
@@ -35,10 +36,8 @@ export function toCaptureRecordView(
   const dataTypeLabel = getCaptureDataTypeLabel(record);
   const detailsLabel = record.details ?? "Abrir detalhes";
   const isStarted = record.status === "STARTED";
-  const detailHref = `/registros/${encodeURIComponent(record.id)}`;
-  const resumeHref = isStarted
-    ? `/captura/${encodeURIComponent(record.id)}`
-    : undefined;
+  const detailHref = getCaptureDetailHref(record.id);
+  const resumeHref = isStarted ? getCaptureResumeHref(record.id) : undefined;
   const actionHref = resumeHref ?? detailHref;
   const actionLabel = isStarted ? "Continuar" : "Abrir";
 
@@ -67,31 +66,4 @@ export function toCaptureRecordView(
       detailsLabel,
     ].join(" "),
   };
-}
-
-export function getCaptureDataTypeLabel(record: {
-  imageCount: number;
-  videoCount: number;
-}): string {
-  if (record.imageCount > 0 && record.videoCount > 0) {
-    return "Print + Video";
-  }
-
-  if (record.videoCount > 0) {
-    return "Video";
-  }
-
-  if (record.imageCount > 0) {
-    return "Print";
-  }
-
-  return "Sem midia";
-}
-
-export function formatCaptureDateTime(value?: string): string {
-  if (!value) {
-    return "-";
-  }
-
-  return DATE_TIME_FORMATTER.format(new Date(value));
 }
