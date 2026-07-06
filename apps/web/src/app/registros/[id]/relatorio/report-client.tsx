@@ -5,14 +5,14 @@ import { Download, Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ReportDocument } from "@/components/veridit/report-document";
-import type { VeriditRecord } from "@/lib/mock-data";
+import type { RecordReportView } from "@/lib/record-report-view";
 
 interface ReportClientProps {
-  record: VeriditRecord;
+  report: RecordReportView;
 }
 
 export default function ReportClient({
-  record,
+  report,
 }: ReportClientProps) {
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -57,7 +57,7 @@ export default function ReportClient({
         },
         body: JSON.stringify({
           html,
-          fileName: `relatorio-${record.id}.pdf`,
+          fileName: `relatorio-${report.id}.pdf`,
         }),
       });
 
@@ -72,7 +72,7 @@ export default function ReportClient({
       const a = document.createElement("a");
 
       a.href = url;
-      a.download = `relatorio-${record.id}.pdf`;
+      a.download = `relatorio-${report.id}.pdf`;
 
       document.body.appendChild(a);
       a.click();
@@ -103,7 +103,7 @@ export default function ReportClient({
       </div>
 
       <div ref={reportRef}>
-        <ReportDocument record={record} />
+        <ReportDocument report={report} />
       </div>
     </>
   );
