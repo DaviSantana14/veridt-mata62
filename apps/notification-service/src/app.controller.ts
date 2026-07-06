@@ -2,6 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { EventPattern, Payload } from '@nestjs/microservices';
 import {
   VERIDIT_EVENTS,
+  type CaptureCompletedEvent,
   type CreditPurchaseCreatedEvent,
   type HealthResponse,
   type PasswordResetRequestedEvent,
@@ -24,6 +25,13 @@ export class AppController {
     @Payload() event: CreditPurchaseCreatedEvent,
   ): Promise<NotificationResponse> {
     return this.appService.createCreditPurchaseEmail(event);
+  }
+
+  @EventPattern(VERIDIT_EVENTS.captureCompleted)
+  handleCaptureCompleted(
+    @Payload() event: CaptureCompletedEvent,
+  ): Promise<NotificationResponse> {
+    return this.appService.createCaptureCompletedEmail(event);
   }
 
   @EventPattern(VERIDIT_EVENTS.userRegistered)

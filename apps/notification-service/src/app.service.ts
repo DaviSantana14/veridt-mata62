@@ -1,14 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   VERIDIT_EVENTS,
+  type CaptureCompletedEvent,
   type CreditPurchaseCreatedEvent,
   type HealthResponse,
   type PasswordResetRequestedEvent,
+  type UserResponse,
   type UserRegisteredEvent,
 } from '@veridit/contracts';
 import { EMAIL_PROVIDER } from './email/email.tokens';
 import type { EmailProvider } from './email/email.types';
 import {
+  renderCaptureCompletedEmail,
   renderCreditPurchaseEmail,
   renderPasswordResetEmail,
   renderWelcomeEmail,
@@ -30,6 +33,8 @@ interface CreateEmailNotificationInput {
   eventName: string;
   metadata: Record<string, string | number | boolean | null>;
 }
+
+const DEFAULT_IDENTITY_SERVICE_URL = 'http://127.0.0.1:3101';
 
 @Injectable()
 export class AppService {
@@ -66,6 +71,37 @@ export class AppService {
         purchaseId: event.purchaseId,
         userId: event.userId,
         packageName: event.packageName,
+      },
+    });
+  }
+
+  async createCaptureCompletedEmail(
+    event: CaptureCompletedEvent,
+  ): Promise<NotificationResponse> {
+    const user = await this.getUserForNotification(event.userId);
+    const email = renderCaptureCompletedEmail({
+      recordId: event.recordId,
+      title: event.title,
+      siteUrl: event.siteUrl,
+      imageCount: event.imageCount,
+      videoCount: event.videoCount,
+      occurredAt: event.occurredAt,
+    });
+
+    return this.createEmailNotification({
+      recipient: user.email,
+      subject: email.subject,
+      body: email.text,
+      html: email.html,
+      eventName: VERIDIT_EVENTS.captureCompleted,
+      metadata: {
+        recordId: event.recordId,
+        userId: event.userId,
+        title: event.title,
+        siteUrl: event.siteUrl,
+        imageCount: event.imageCount,
+        videoCount: event.videoCount,
+        occurredAt: event.occurredAt,
       },
     });
   }
@@ -163,6 +199,31 @@ export class AppService {
     });
 
     return this.toNotificationResponse(sentNotification);
+  }
+
+  private async getUserForNotification(userId: string): Promise<UserResponse> {
+    const identityUrl = (
+      process.env.IDENTITY_SERVICE_URL ?? DEFAULT_IDENTITY_SERVICE_URL
+    ).replace(/\/+$/, '');
+    const response = await fetch(
+      `${identityUrl}/users/${encodeURIComponent(userId)}`,
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Could not resolve notification recipient for user ${userId}: identity-service returned ${response.status}`,
+      );
+    }
+
+    const user = (await response.json()) as Partial<UserResponse>;
+
+    if (!user.email) {
+      throw new Error(
+        `Could not resolve notification recipient for user ${userId}: missing email`,
+      );
+    }
+
+    return user as UserResponse;
   }
 
   private toNotificationResponse(notification: {

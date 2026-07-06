@@ -30,6 +30,15 @@ interface CreditPurchaseEmailInput {
   credits: number;
 }
 
+interface CaptureCompletedEmailInput {
+  recordId: string;
+  title: string;
+  siteUrl: string;
+  imageCount: number;
+  videoCount: number;
+  occurredAt: string;
+}
+
 const DEFAULT_FRONTEND_ORIGIN = 'http://localhost:3000';
 
 function getFrontendOrigin(): string {
@@ -238,6 +247,55 @@ export function renderCreditPurchaseEmail(
     },
     footerNote:
       'Guarde este email como comprovante da notificação de compra de créditos Veridit.',
+  });
+
+  return {
+    subject,
+    text,
+    html,
+  };
+}
+
+export function renderCaptureCompletedEmail(
+  input: CaptureCompletedEmailInput,
+): RenderedEmailTemplate {
+  const recordUrl = buildFrontendUrl(`/registros/${input.recordId}`);
+  const subject = 'Registro de conteúdo Veridit concluído';
+  const completedAt = new Date(input.occurredAt).toLocaleString('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'America/Sao_Paulo',
+  });
+  const text = [
+    `O registro "${input.title}" foi concluído com sucesso.`,
+    `Site inicial: ${input.siteUrl}`,
+    `Capturas de tela: ${input.imageCount}`,
+    `Vídeos: ${input.videoCount}`,
+    `Conclusão: ${completedAt}`,
+    `Acesse o registro: ${recordUrl}`,
+  ].join('\n\n');
+
+  const html = renderEmailLayout({
+    preview: 'Seu registro de conteúdo Veridit foi concluído.',
+    title: 'Registro de conteúdo concluído',
+    bodyHtml: [
+      paragraph(
+        `Confirmamos a conclusão do registro "${input.title}". As evidências registradas já estão disponíveis para acompanhamento no sistema.`,
+      ),
+      renderSummaryRows([
+        ['Registro', input.title],
+        ['Site inicial', input.siteUrl],
+        ['Capturas de tela', String(input.imageCount)],
+        ['Vídeos', String(input.videoCount)],
+        ['Conclusão', completedAt],
+      ]),
+    ].join(''),
+    button: {
+      label: 'Ver registro',
+      href: recordUrl,
+    },
+    footerNote:
+      'Email automático da Veridit. Esta mensagem confirma a conclusão do registro de conteúdo.',
   });
 
   return {

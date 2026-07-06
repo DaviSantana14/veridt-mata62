@@ -1,5 +1,13 @@
 const assert = require('node:assert').strict;
-const { AppService } = require('../dist/src/app.service.js');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const appServiceBuildPath = fs.existsSync(
+  path.join(__dirname, '../dist/src/app.service.js'),
+)
+  ? '../dist/src/app.service.js'
+  : '../dist/app.service.js';
+const { AppService } = require(appServiceBuildPath);
 
 function makeEvent() {
   return {
@@ -29,6 +37,18 @@ function makePasswordResetEvent() {
     email: 'ana@example.com',
     code: '123456',
     expiresAt: '2026-06-06T12:15:00.000Z',
+    occurredAt: '2026-06-06T12:00:00.000Z',
+  };
+}
+
+function makeCaptureCompletedEvent() {
+  return {
+    recordId: 'record-1',
+    userId: 'user-1',
+    title: 'Captura UFBA',
+    siteUrl: 'https://www.ufba.br/',
+    imageCount: 2,
+    videoCount: 1,
     occurredAt: '2026-06-06T12:00:00.000Z',
   };
 }
@@ -68,6 +88,29 @@ function makePrisma(updates, onUpdate, creates) {
         );
       },
     },
+  };
+}
+
+function mockIdentityUser(user = {}) {
+  const originalFetch = global.fetch;
+
+  global.fetch = async (url) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      id: 'user-1',
+      fullName: 'Ana Silva',
+      email: 'ana@example.com',
+      cpf: '12345678900',
+      profile: 'COMMON_USER',
+      createdAt: '2026-06-06T12:00:00.000Z',
+      ...user,
+    }),
+    url,
+  });
+
+  return () => {
+    global.fetch = originalFetch;
   };
 }
 
@@ -131,6 +174,97 @@ async function doesNotMarkSentEmailAsFailedWhenSentUpdateFails() {
     updates.map((update) => update.data.status),
     ['SENT'],
   );
+}
+
+async function sendsCaptureCompletedEmailToRecordOwner() {
+  const restoreFetch = mockIdentityUser();
+  const updates = [];
+  const creates = [];
+  const sentEmails = [];
+  const emailProvider = {
+    sendEmail(input) {
+      sentEmails.push(input);
+      return Promise.resolve({ messageId: 'capture-message-123' });
+    },
+  };
+  const service = new AppService(
+    makePrisma(updates, undefined, creates),
+    emailProvider,
+  );
+
+  try {
+    const response = await service.createCaptureCompletedEmail(
+      makeCaptureCompletedEvent(),
+    );
+
+    assert.equal(response.recipient, 'ana@example.com');
+    assert.equal(response.status, 'SENT');
+    assert.equal(creates.length, 1);
+    assert.equal(creates[0]?.data.eventName, 'capture.completed');
+    assert.equal(creates[0]?.data.metadata.recordId, 'record-1');
+    assert.equal(creates[0]?.data.metadata.userId, 'user-1');
+    assert.equal(creates[0]?.data.metadata.title, 'Captura UFBA');
+    assert.equal(creates[0]?.data.metadata.siteUrl, 'https://www.ufba.br/');
+    assert.equal(creates[0]?.data.metadata.imageCount, 2);
+    assert.equal(creates[0]?.data.metadata.videoCount, 1);
+    assert.equal(
+      creates[0]?.data.metadata.occurredAt,
+      '2026-06-06T12:00:00.000Z',
+    );
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0]?.data.status, 'SENT');
+    assert.equal(updates[0]?.data.providerMessageId, 'capture-message-123');
+    assert.equal(sentEmails.length, 1);
+    assert.equal(sentEmails[0]?.to, 'ana@example.com');
+    assert.match(
+      sentEmails[0]?.subject,
+      /Registro de conteúdo Veridit concluído/,
+    );
+    assert.match(sentEmails[0]?.text, /Captura UFBA/);
+    assert.match(sentEmails[0]?.text, /https:\/\/www\.ufba\.br\//);
+    assert.match(sentEmails[0]?.text, /Capturas de tela: 2/);
+    assert.match(sentEmails[0]?.text, /Vídeos: 1/);
+    assert.match(sentEmails[0]?.text, /http:\/\/localhost:3000\/registros\/record-1/);
+    assert.match(sentEmails[0]?.html, /Captura UFBA/);
+    assert.match(sentEmails[0]?.html, /https:\/\/www\.ufba\.br\//);
+    assert.match(sentEmails[0]?.html, /Capturas de tela/);
+    assert.match(sentEmails[0]?.html, /Vídeos/);
+    assert.match(sentEmails[0]?.html, /http:\/\/localhost:3000\/registros\/record-1/);
+    assert.match(sentEmails[0]?.html, /VERIDIT/);
+  } finally {
+    restoreFetch();
+  }
+}
+
+async function failsCaptureCompletedEmailWhenUserEmailCannotBeResolved() {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: false,
+    status: 404,
+    json: async () => ({}),
+  });
+  const updates = [];
+  const creates = [];
+  const emailProvider = {
+    sendEmail() {
+      throw new Error('email should not be sent');
+    },
+  };
+  const service = new AppService(
+    makePrisma(updates, undefined, creates),
+    emailProvider,
+  );
+
+  try {
+    await assert.rejects(
+      () => service.createCaptureCompletedEmail(makeCaptureCompletedEvent()),
+      /Could not resolve notification recipient/,
+    );
+    assert.equal(creates.length, 0);
+    assert.equal(updates.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
 }
 
 async function sendsWelcomeEmailForRegisteredUser() {
@@ -313,6 +447,8 @@ async function main() {
   await sendsWelcomeEmailForRegisteredUser();
   await sendsPasswordResetEmailWithCode();
   await sendsCreditPurchaseEmailWithSummaryAndLink();
+  await sendsCaptureCompletedEmailToRecordOwner();
+  await failsCaptureCompletedEmailWhenUserEmailCannotBeResolved();
   await marksPasswordResetSendFailureAsFailed();
   await marksWelcomeSendFailureAsFailed();
   await doesNotMarkWelcomeEmailAsFailedWhenSentUpdateFails();
