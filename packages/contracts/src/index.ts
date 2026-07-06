@@ -219,6 +219,17 @@ export interface CaptureRecordDetailsResponse extends ContentRecordResponse {
   videoCount: number;
 }
 
+export interface CaptureRecordListItemResponse extends ContentRecordResponse {
+  details?: string;
+  imageCount: number;
+  videoCount: number;
+}
+
+export interface ListCaptureRecordsResponse {
+  userId: string;
+  records: CaptureRecordListItemResponse[];
+}
+
 export interface StartCaptureSessionResponse extends ContentRecordResponse {
   status: CaptureRecordStatus;
   viewport: CaptureViewport;
