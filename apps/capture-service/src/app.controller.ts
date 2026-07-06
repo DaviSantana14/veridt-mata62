@@ -9,6 +9,7 @@ import type {
   CompleteCaptureResponse,
   ContentRecordResponse,
   HealthResponse,
+  ListCaptureRecordsResponse,
   NavigateCaptureRequest,
   NavigateCaptureResponse,
   StartCaptureSessionResponse,
@@ -47,6 +48,13 @@ export class AppController {
     @Param('recordId') recordId: string,
   ): Promise<CaptureRecordDetailsResponse> {
     return this.appService.getRecord(recordId);
+  }
+
+  @Get('users/:userId/records')
+  listRecordsForUser(
+    @Param('userId') userId: string,
+  ): Promise<ListCaptureRecordsResponse> {
+    return this.appService.listRecordsForUser(userId);
   }
 
   @Get('records/:recordId/frame')

@@ -11,6 +11,7 @@ import type {
   CreateCreditPurchaseRequest,
   CreateCreditPurchaseResponse,
   CreateEmbeddedCreditPurchaseResponse,
+  ListCaptureRecordsResponse,
   SimulatePaymentResponse,
   StartCaptureRequest,
   StartCaptureSessionResponse,
@@ -102,6 +103,16 @@ const captureRecordDetailsResponse: CaptureRecordDetailsResponse = {
   startedAt: '2026-07-05T12:00:00.000Z',
   imageCount: 2,
   videoCount: 1,
+};
+
+const listCaptureRecordsResponse: ListCaptureRecordsResponse = {
+  userId: 'user-1',
+  records: [
+    {
+      ...captureRecordDetailsResponse,
+      details: 'Concluido com evidencias.',
+    },
+  ],
 };
 
 const captureFrameResponse: CaptureFrameResponse = {
@@ -478,6 +489,18 @@ describe('Api Gateway AppService capture records', () => {
       undefined,
     );
     expect(result).toEqual(captureRecordDetailsResponse);
+  });
+
+  it('lists capture records through capture-service', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(200, listCaptureRecordsResponse));
+
+    const result = await service.listCaptureRecords('user-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3103/users/user-1/records',
+      undefined,
+    );
+    expect(result).toEqual(listCaptureRecordsResponse);
   });
 
   it('sends browser input through capture-service', async () => {

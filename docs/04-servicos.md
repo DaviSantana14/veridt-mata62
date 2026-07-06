@@ -21,6 +21,7 @@ Entrada HTTP para o frontend. Rotas atuais:
 - `POST /billing/payments/mercado-pago/webhook`
 - `GET /capture/health`
 - `POST /capture/records/mock`
+- `GET /capture/users/:userId/records`
 
 ## `apps/identity-service`
 
@@ -34,7 +35,7 @@ O saldo só é creditado quando o webhook Mercado Pago informa pagamento aprovad
 
 ## `apps/capture-service`
 
-Responsável por registros de conteúdo e assets capturados. Hoje cria uma captura mock e publica `capture.completed`.
+Responsável por registros de conteúdo, sessões de captura e assets capturados. Também lista os registros realizados por usuário para atender o REQ 12.
 
 ## `apps/notification-service`
 

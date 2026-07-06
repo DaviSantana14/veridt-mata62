@@ -19,6 +19,10 @@ const appShell = readProjectFile("src/components/layout/app-shell.tsx");
 const dashboardClient = readProjectFile(
   "src/components/veridit/dashboard-client.tsx",
 );
+const evidenceCard = readProjectFile(
+  "src/components/veridit/evidence-card.tsx",
+);
+const captureRecordView = readProjectFile("src/lib/capture-record-view.ts");
 const logoutButton = readProjectFile(
   "src/components/veridit/logout-button.tsx",
 );
@@ -133,6 +137,16 @@ assert.match(
 );
 assert.match(
   gateway,
+  /function listCaptureRecords\(userId: string\)/,
+  "web gateway helpers must expose capture record listing",
+);
+assert.match(
+  gateway,
+  /\/capture\/users\/\$\{userId\}\/records/,
+  "capture record listing must go through the API Gateway capture route",
+);
+assert.match(
+  gateway,
   /function updateUserProfile\(/,
   "web gateway helpers must expose profile update",
 );
@@ -150,6 +164,31 @@ assert.doesNotMatch(
   `${profilePage}\n${profileClient}`,
   /currentUser\.(name|email|initials)/,
   "profile UI must not render mocked user identity fields",
+);
+assert.doesNotMatch(
+  dashboardClient,
+  /import\s+\{\s*currentUser,\s*records\s*\}\s+from\s+["']@\/lib\/mock-data["']/,
+  "dashboard must not import mocked records",
+);
+assert.match(
+  captureRecordView,
+  /record\.status === ["']STARTED["']/,
+  "started capture records must be handled separately from finished records",
+);
+assert.match(
+  captureRecordView,
+  /`\/captura\/\$\{encodeURIComponent\(record\.id\)\}`/,
+  "started capture record list actions must point to the capture resume route",
+);
+assert.match(
+  captureRecordView,
+  /`\/captura\/concluida\?recordId=\$\{encodeURIComponent\(record\.id\)\}`/,
+  "finished capture record list actions must point to a real-data route",
+);
+assert.doesNotMatch(
+  `${dashboardClient}\n${evidenceCard}`,
+  /\/registros\/\$\{record\.id\}/,
+  "real capture record list actions must not route to the mock-backed registros page",
 );
 assert.doesNotMatch(
   `${profilePage}\n${profileClient}`,

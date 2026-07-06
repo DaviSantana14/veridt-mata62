@@ -10,11 +10,13 @@ import {
   type CaptureAssetType,
   type CaptureFrameResponse,
   type CaptureRecordDetailsResponse,
+  type CaptureRecordListItemResponse,
   type CaptureRecordStatus,
   type CaptureVideoStateResponse,
   type CompleteCaptureResponse,
   type ContentRecordResponse,
   type HealthResponse,
+  type ListCaptureRecordsResponse,
   type NavigateCaptureRequest,
   type NavigateCaptureResponse,
   type StartCaptureRequest,
@@ -34,6 +36,11 @@ interface StoredContentRecord {
   status: CaptureRecordStatus;
   startedAt: Date;
   finishedAt: Date | null;
+}
+
+interface StoredListedContentRecord extends StoredContentRecord {
+  details: string | null;
+  assets: Array<{ type: CaptureAssetType }>;
 }
 
 interface StoredCaptureAsset {
@@ -155,6 +162,21 @@ export class AppService {
     };
   }
 
+  async listRecordsForUser(
+    userId: string,
+  ): Promise<ListCaptureRecordsResponse> {
+    const records = (await this.prisma.contentRecord.findMany({
+      where: { userId },
+      orderBy: { startedAt: 'desc' },
+      include: { assets: { select: { type: true } } },
+    })) as StoredListedContentRecord[];
+
+    return {
+      userId,
+      records: records.map((record) => this.mapRecordListItem(record)),
+    };
+  }
+
   async getFrame(recordId: string): Promise<CaptureFrameResponse> {
     await this.findStartedRecordOrThrow(recordId);
     const frame = await this.withActiveSession(() =>
@@ -261,16 +283,10 @@ export class AppService {
     const pendingVideoAsset = this.pendingVideoAssets.get(recordId);
 
     if (pendingVideoAsset) {
-      await this.withActiveSession(() =>
-        this.sessionManager.stopVideo(recordId),
-      );
-      await this.persistVideoAsset(recordId, pendingVideoAsset);
-      this.pendingVideoAssets.delete(recordId);
+      await this.persistPendingVideoBestEffort(recordId, pendingVideoAsset);
     }
 
-    await this.withActiveSession(() =>
-      this.sessionManager.closeSession(recordId),
-    );
+    await this.closeSessionBestEffort(recordId);
 
     const finishedAt = new Date();
     const completedRecord = (await this.prisma.contentRecord.update({
@@ -388,6 +404,51 @@ export class AppService {
     }
   }
 
+  private async closeSessionBestEffort(recordId: string): Promise<void> {
+    try {
+      await this.sessionManager.closeSession(recordId);
+    } catch (error) {
+      if (this.isInactiveSessionError(error)) {
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  private async persistPendingVideoBestEffort(
+    recordId: string,
+    pendingVideoAsset: PendingVideoAsset,
+  ): Promise<void> {
+    try {
+      await this.withActiveSession(() =>
+        this.sessionManager.stopVideo(recordId),
+      );
+      await this.persistVideoAsset(recordId, pendingVideoAsset);
+    } catch (error) {
+      if (!this.isInactiveSessionError(error)) {
+        throw error;
+      }
+    } finally {
+      this.pendingVideoAssets.delete(recordId);
+    }
+  }
+
+  private isInactiveSessionError(error: unknown): boolean {
+    const message =
+      error instanceof Error ? error.message.toLowerCase() : String(error);
+
+    return (
+      error instanceof NotFoundException ||
+      (error instanceof ConflictException &&
+        error.message === 'Sessao de captura nao esta ativa') ||
+      message.includes('target page') ||
+      message.includes('page is closed') ||
+      message.includes('context closed') ||
+      message.includes('browser has been closed')
+    );
+  }
+
   private async getCurrentSessionUrl(recordId: string): Promise<string> {
     const frame = await this.withActiveSession(() =>
       this.sessionManager.getFrame(recordId),
@@ -405,6 +466,24 @@ export class AppService {
       status: record.status,
       startedAt: record.startedAt.toISOString(),
       finishedAt: this.mapOptionalDate(record.finishedAt),
+    };
+  }
+
+  private mapRecordListItem(
+    record: StoredListedContentRecord,
+  ): CaptureRecordListItemResponse {
+    const imageCount = record.assets.filter(
+      (asset) => asset.type === 'IMAGE',
+    ).length;
+    const videoCount = record.assets.filter(
+      (asset) => asset.type === 'VIDEO',
+    ).length;
+
+    return {
+      ...this.mapContentRecord(record),
+      details: record.details ?? undefined,
+      imageCount,
+      videoCount,
     };
   }
 

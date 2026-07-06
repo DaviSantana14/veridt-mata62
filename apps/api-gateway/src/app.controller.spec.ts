@@ -11,6 +11,7 @@ import type {
   CreateCreditPurchaseRequest,
   CreateCreditPurchaseResponse,
   CreateEmbeddedCreditPurchaseResponse,
+  ListCaptureRecordsResponse,
   SimulatePaymentResponse,
   StartCaptureRequest,
   StartCaptureSessionResponse,
@@ -103,6 +104,16 @@ const captureRecordDetailsResponse: CaptureRecordDetailsResponse = {
   startedAt: '2026-07-05T12:00:00.000Z',
   imageCount: 2,
   videoCount: 1,
+};
+
+const listCaptureRecordsResponse: ListCaptureRecordsResponse = {
+  userId: 'user-1',
+  records: [
+    {
+      ...captureRecordDetailsResponse,
+      details: 'Concluido com evidencias.',
+    },
+  ],
 };
 
 const captureFrameResponse: CaptureFrameResponse = {
@@ -291,6 +302,7 @@ describe('Api Gateway AppController capture records', () => {
   let appService: {
     startCapture: jest.Mock;
     getCaptureRecord: jest.Mock;
+    listCaptureRecords: jest.Mock;
     getCaptureFrame: jest.Mock;
     sendCaptureInput: jest.Mock;
     navigateCapture: jest.Mock;
@@ -306,6 +318,9 @@ describe('Api Gateway AppController capture records', () => {
       getCaptureRecord: jest
         .fn()
         .mockResolvedValue(captureRecordDetailsResponse),
+      listCaptureRecords: jest
+        .fn()
+        .mockResolvedValue(listCaptureRecordsResponse),
       getCaptureFrame: jest.fn().mockResolvedValue(captureFrameResponse),
       sendCaptureInput: jest.fn().mockResolvedValue({ accepted: true }),
       navigateCapture: jest.fn().mockResolvedValue(navigateResponse),
@@ -337,6 +352,14 @@ describe('Api Gateway AppController capture records', () => {
 
     expect(appService.getCaptureRecord).toHaveBeenCalledWith('record-1');
     expect(appService.getCaptureFrame).toHaveBeenCalledWith('record-1');
+  });
+
+  it('proxies user capture record listing', async () => {
+    await expect(controller.listCaptureRecords('user-1')).resolves.toEqual(
+      listCaptureRecordsResponse,
+    );
+
+    expect(appService.listCaptureRecords).toHaveBeenCalledWith('user-1');
   });
 
   it('proxies browser input commands', async () => {

@@ -18,6 +18,7 @@ import {
   type CreateEmbeddedCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
+  type ListCaptureRecordsResponse,
   type LoginUserRequest,
   type NavigateCaptureRequest,
   type NavigateCaptureResponse,
@@ -303,6 +304,17 @@ export class AppService {
       'capture-service',
       this.urls.capture,
       `/records/${recordId}`,
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  listCaptureRecords(userId: string): Promise<ListCaptureRecordsResponse> {
+    return this.getFromService(
+      'capture-service',
+      this.urls.capture,
+      `/users/${userId}/records`,
       {
         preserveClientErrors: true,
       },

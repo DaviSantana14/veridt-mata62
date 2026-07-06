@@ -1,1281 +1,685 @@
-# Registro de Conteudo Navegavel Implementation Plan
+# Visualizar Detalhes dos Registros Realizados Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implementar o REQ 08 com uma sessao de captura navegavel: o usuario informa uma URL, o sistema abre essa URL em um navegador remoto controlado pelo `capture-service`, e a tela do Veridit permite navegar, gravar video e tirar prints do conteudo.
+**Goal:** Implementar o REQ 13 para que `/registros/:id` mostre detalhes reais do registro selecionado, incluindo nome e email do usuario responsavel.
 
-**Architecture:** O frontend continua falando somente com o API Gateway, como definido em `docs/03-arquitetura.md`. O `capture-service` passa a ser dono das sessoes Playwright, dos arquivos gerados e dos registros `ContentRecord`/`CaptureAsset`; o API Gateway apenas faz proxy HTTP. A primeira versao usa polling de frames em base64 e eventos de input por HTTP para manter a implementacao simples, sem iframe e sem WebSocket.
+**Architecture:** O `capture-service` continua sendo dono dos dados de captura e ja expoe `GET /records/:recordId`. O `identity-service` continua sendo dono dos dados do usuario e ja expoe `GET /users/:id` pelo API Gateway. O frontend compoe os dois dados via API Gateway, sem chamada direta a microsservicos e sem criar rota nova desnecessaria.
 
-**Tech Stack:** Next.js 16 App Router, React 19, NestJS 11, Prisma, Playwright Chromium, PostgreSQL, RabbitMQ existente para `capture.completed`.
+**Tech Stack:** Next.js 16 App Router, React 19, NestJS 11, Prisma, PostgreSQL, TypeScript, Jest, Node architecture tests.
 
 ---
 
 ## Contexto Confirmado
 
-- O PDF define `Registro de conteúdo` com `Endereço do site` e `título do registro do conteúdo`.
-- O fluxo desejado pelo usuario e:
-  - clicar em `Nova Captura`;
-  - informar o link;
-  - abrir uma tela de captura;
-  - renderizar o site dentro de um container navegavel;
-  - navegar no conteudo;
-  - usar botoes laterais para gravar video e tirar print do container.
-- Nao usar `iframe` como solucao principal. Sites externos podem bloquear embedding com `X-Frame-Options` ou `CSP frame-ancestors`, e o browser bloqueia captura confiavel de conteudo cross-origin.
-- Usar navegador remoto com Playwright no backend. O container do frontend mostra frames desse navegador remoto e envia input do usuario de volta ao backend.
-- Esta versao nao desconta credito. O repo ainda nao tem endpoint de consumo de credito por captura; o REQ 08 deve iniciar e operar a captura. Consumo de credito pode ser integrado quando existir regra no billing.
-- Esta versao nao gera relatorio real nem ZIP. Ela grava `CaptureAsset` e publica `capture.completed` ao concluir, mantendo o caminho para REQ 10, REQ 14 e REQ 15.
+- O PDF `docs/veridit-req.pdf` define o REQ 13 como: o sistema deve disponibilizar os dados do registro selecionado pelo usuario com base no Apendice A.
+- Campos do Apendice A para `Detalhes dos registros`:
+  - id gerado pelo sistema;
+  - titulo;
+  - data/hora inicio;
+  - data/hora fim;
+  - tipos de dados registrados;
+  - informacoes dos dados, com numero de imagens e videos;
+  - usuario responsavel pelo registro.
+- Decisao de produto: usuario responsavel deve aparecer como nome e email.
+- `ContentRecord` e `CaptureAsset` vivem no banco do `capture-service`.
+- Nome/email do usuario vivem no banco do `identity-service`.
+- O API Gateway ja expoe:
+  - `GET /capture/records/:recordId`;
+  - `GET /identity/users/:id`.
+- O frontend ja tem helpers:
+  - `getCaptureRecord(recordId)` em `apps/web/src/lib/gateway.ts`;
+  - `getUserProfile(userId)` em `apps/web/src/lib/gateway.ts`.
+- A pagina `apps/web/src/app/registros/[id]/page.tsx` existe, mas ainda usa `getRecordById` e `chainOfCustody` de `apps/web/src/lib/mock-data.ts`.
+- A pagina `apps/web/src/app/captura/concluida/page.tsx` ja mostra um detalhe minimo real usando `getCaptureRecord(recordId)`. Ela deve servir como referencia de formatacao e estados de erro, mas nao substitui `/registros/:id`.
+- O dashboard ja lista registros reais, mas atualmente as acoes de registros finalizados apontam para `/captura/concluida?recordId=...`. Para REQ 13, o fluxo oficial de detalhes deve apontar para `/registros/:id`.
 
-## Decisao De Transporte
+## Referencias Validadas
 
-Usar HTTP polling no primeiro corte:
+- Context7 confirmou que, no Next.js App Router atual, paginas com rota dinamica recebem `params` como `Promise` em Server Components e devem usar `await params`.
+- Context7 confirmou o padrao NestJS de `@Get(':id')` com `@Param('id')`, e que rotas parametrizadas devem respeitar ordem para nao interceptar caminhos mais especificos.
+- Context7 confirmou que Prisma Client suporta `include`, `select` e contagens filtradas de relacoes. Para este requisito, a rota existente ja retorna `imageCount` e `videoCount`, entao nao e necessario redesenhar consultas agora.
 
-- `GET /capture/records/:recordId/frame` retorna o frame atual como JSON com base64.
-- `POST /capture/records/:recordId/input` envia clique, scroll, tecla ou texto colado.
-- O frontend atualiza o frame a cada 500 ms enquanto a sessao esta ativa e tambem apos cada input.
+## Escopo
 
-Motivo: e mais simples, usa o gateway HTTP existente, evita WebSocket, e respeita a regra "frontend chama apenas o API Gateway". Se a UX ficar lenta, a mesma modelagem de sessao permite trocar o transporte de frames por WebSocket em uma evolucao separada, sem mudar a persistencia principal.
+Implementar:
 
-## Rotas Alvo
+- pagina real de detalhes em `/registros/:id`;
+- exibicao de nome e email do usuario responsavel;
+- remocao do uso de `mock-data` na pagina de detalhes;
+- redirecionamento da listagem/dashboard para a pagina real de detalhes;
+- view model simples para formatar os dados do registro;
+- testes de arquitetura para impedir regressao para mock;
+- documentacao das rotas usadas pelo REQ 13;
+- verificacao por build/testes.
 
-Todas as rotas abaixo devem existir no API Gateway e ser encaminhadas para o `capture-service`.
+Nao implementar neste plano:
+
+- REQ 14, relatorio real;
+- REQ 15, ZIP real;
+- download de assets;
+- exibicao de lista de arquivos capturados;
+- autenticacao/autorizacao backend por JWT;
+- composicao no API Gateway;
+- migracao de banco.
+
+## Decisao De Fluxo
+
+Fluxo alvo:
 
 ```text
-POST /capture/records
-GET  /capture/records/:recordId
-GET  /capture/records/:recordId/frame
-POST /capture/records/:recordId/input
-POST /capture/records/:recordId/screenshots
-POST /capture/records/:recordId/video/start
-POST /capture/records/:recordId/video/stop
-POST /capture/records/:recordId/complete
+Dashboard
+  -> /registros/:id
+    -> web chama GET /capture/records/:recordId pelo API Gateway
+    -> web usa record.userId e chama GET /identity/users/:id pelo API Gateway
+    -> tela renderiza campos do REQ 13
 ```
+
+Motivo:
+
+- e a menor mudanca que atende o requisito;
+- preserva isolamento: cada servico continua lendo apenas seu banco;
+- evita criar endpoint composto antes de haver autenticacao forte;
+- reaproveita helpers e testes ja existentes.
+
+## Experiencia Esperada
+
+Em `/registros/:id`, mostrar:
+
+```text
+Titulo
+Status
+ID do registro
+URL/site do registro
+Data/hora inicio
+Data/hora fim ou "-"
+Tipos de dados registrados: Print, Video, Print + Video, ou Sem midia
+Numero de imagens
+Numero de videos
+Usuario responsavel: nome + email
+ID tecnico do usuario
+```
+
+Estados:
+
+```text
+Registro nao encontrado ou erro no capture-service:
+  mostrar erro sem dados ficticios e botao para Dashboard.
+
+Usuario responsavel nao encontrado ou erro no identity-service:
+  mostrar os dados do registro, mostrar userId, e exibir alerta informando que nome/email nao puderam ser carregados.
+```
+
+Acoes:
+
+```text
+Voltar para Dashboard
+Nova captura
+Continuar captura, apenas quando status for STARTED
+```
+
+Nao mostrar como disponiveis nesta tela:
+
+```text
+Ver relatorio
+Baixar ZIP
+Hash, duracao e tamanho ficticios
+```
+
+Esses pontos pertencem aos requisitos 14 e 15 ou ainda nao existem como dados reais.
+
+---
 
 ## Estrutura De Arquivos
 
-### Shared contracts
-
-- Modify: `packages/contracts/src/index.ts`
-  - Adicionar tipos de status, assets, frame, input e respostas das novas rotas.
-  - Manter `StartCaptureRequest` compativel com o que ja existe.
-
-### Capture service
-
-- Modify: `apps/capture-service/package.json`
-  - Adicionar `test`.
-  - Adicionar dependencia `playwright`.
-- Modify: `apps/capture-service/.env.example`
-  - Adicionar configuracoes de storage, viewport e TTL.
-- Modify: `.gitignore`
-  - Ignorar arquivos locais de captura.
-- Create: `apps/capture-service/src/dto/start-capture.dto.ts`
-  - DTO real para `POST /records`.
-- Create: `apps/capture-service/src/dto/browser-input.dto.ts`
-  - DTO para input do container remoto.
-- Create: `apps/capture-service/src/capture/url-policy.service.ts`
-  - Validacao SSRF-safe para URLs informadas pelo usuario.
-- Create: `apps/capture-service/src/capture/capture-storage.service.ts`
-  - Criacao de diretorios e leitura de tamanho dos arquivos.
-- Create: `apps/capture-service/src/capture/playwright-browser.service.ts`
-  - Adapter fino sobre Playwright.
-- Create: `apps/capture-service/src/capture/capture-session-manager.service.ts`
-  - Gerencia sessoes em memoria, frames, input, screenshot, video e encerramento.
-- Modify: `apps/capture-service/src/app.service.ts`
-  - Delegar fluxo real de captura para os novos services.
-- Modify: `apps/capture-service/src/app.controller.ts`
-  - Expor rotas reais de captura.
-- Modify: `apps/capture-service/src/app.module.ts`
-  - Registrar novos providers.
-- Test: `apps/capture-service/src/capture/url-policy.service.spec.ts`
-- Test: `apps/capture-service/src/capture/capture-session-manager.service.spec.ts`
-- Test: `apps/capture-service/src/app.controller.spec.ts`
-- Test: `apps/capture-service/src/app.service.spec.ts`
-
-### API Gateway
-
-- Modify: `apps/api-gateway/src/app.controller.ts`
-  - Expor as novas rotas `/capture/records...`.
-- Modify: `apps/api-gateway/src/app.service.ts`
-  - Fazer proxy para o `capture-service`.
-- Test: `apps/api-gateway/src/app.controller.spec.ts`
-- Test: `apps/api-gateway/src/app.service.spec.ts`
-
 ### Web
 
-- Modify: `apps/web/src/lib/gateway.ts`
-  - Adicionar client functions das novas rotas.
-- Modify: `apps/web/src/app/captura/page.tsx`
-  - Manter como tela de entrada da URL.
-- Modify: `apps/web/src/components/veridit/capture-client.tsx`
-  - Simplificar formulario para URL e titulo gerado/editavel.
-- Create: `apps/web/src/app/captura/[recordId]/page.tsx`
-  - Pagina da sessao navegavel.
-- Create: `apps/web/src/components/veridit/capture-workspace-client.tsx`
-  - Container remoto, polling de frames, input e botoes laterais.
-- Modify: `apps/web/src/app/captura/concluida/page.tsx`
-  - Aceitar `recordId` via query string e mostrar retorno coerente.
-- Optional Test: `apps/web/test/gateway-architecture.spec.mjs`
-  - Garantir que o web continua chamando apenas `NEXT_PUBLIC_API_GATEWAY_URL`.
+- Modify: `apps/web/src/lib/capture-record-view.ts`
+  - Fazer `detailHref` apontar sempre para `/registros/:id`.
+  - Manter uma rota de retomada separada para registros `STARTED`, se necessario.
+  - Reusar formatacao de data e tipo de dado na pagina de detalhe.
+- Create: `apps/web/src/lib/capture-record-detail-view.ts`
+  - Centralizar o view model da pagina `/registros/:id`.
+  - Receber `CaptureRecordDetailsResponse` e, quando disponivel, `UserResponse`.
+  - Produzir labels prontos para a UI.
+- Modify: `apps/web/src/app/registros/[id]/page.tsx`
+  - Remover `getRecordById` e `chainOfCustody`.
+  - Buscar o registro real com `getCaptureRecord(id)`.
+  - Buscar usuario responsavel com `getUserProfile(record.userId)`.
+  - Renderizar os campos do REQ 13.
+  - Renderizar estados de erro sem fallback mockado.
+- Modify: `apps/web/src/components/veridit/evidence-card.tsx`
+  - Garantir que cards mobile abrem `record.detailHref`, que passa a ser `/registros/:id`.
+- Modify: `apps/web/src/components/veridit/dashboard-client.tsx`
+  - Garantir que a coluna `Detalhes` usa `record.detailHref`.
+  - Se houver acao de continuar captura, ela deve ser separada visualmente da acao de detalhe.
+- Test: `apps/web/test/gateway-architecture.spec.mjs`
+  - Garantir que `/registros/[id]` usa gateway real.
+  - Garantir que `/registros/[id]` nao importa `mock-data`.
+  - Garantir que dashboard/cards podem apontar para `/registros/:id`.
+
+### Docs
+
+- Modify: `docs/04-servicos.md`
+  - Documentar que o REQ 13 usa `GET /capture/records/:recordId` e `GET /identity/users/:id`.
+  - Registrar que nome/email do responsavel vem do `identity-service`.
+
+### Backend
+
+- No code changes expected.
+- O contrato atual `CaptureRecordDetailsResponse` ja tem dados suficientes para o REQ 13 no lado de captura: `id`, `userId`, `title`, `siteUrl`, `status`, `startedAt`, `finishedAt`, `imageCount`, `videoCount`.
+- O contrato atual `UserResponse` ja tem os dados necessarios para responsavel: `id`, `fullName`, `email`.
 
 ---
 
-## Task 1: Shared Contracts
+## Task 1: View Model De Detalhes
 
 **Files:**
-- Modify: `packages/contracts/src/index.ts`
+- Modify: `apps/web/src/lib/capture-record-view.ts`
+- Create: `apps/web/src/lib/capture-record-detail-view.ts`
 
-- [ ] **Step 1: Definir os contratos de captura**
+- [ ] **Step 1: Ajustar o link canonico de detalhe**
 
-Adicionar tipos pequenos e explicitos. Manter nomes em ingles porque o pacote atual ja usa ingles.
+Em `apps/web/src/lib/capture-record-view.ts`, alterar a regra de `detailHref` para sempre apontar para `/registros/:id`.
 
-```ts
-export type CaptureRecordStatus = "STARTED" | "COMPLETED" | "FAILED";
-export type CaptureAssetType = "IMAGE" | "VIDEO";
+Manter qualquer rota de retomada de captura separada do detalhe:
 
-export interface CaptureViewport {
-  width: number;
-  height: number;
-}
-
-export interface StartCaptureSessionResponse extends ContentRecordResponse {
-  status: CaptureRecordStatus;
-  viewport: CaptureViewport;
-}
-
-export interface CaptureFrameResponse {
-  recordId: string;
-  mimeType: "image/jpeg";
-  imageBase64: string;
-  currentUrl: string;
-  capturedAt: string;
-  viewport: CaptureViewport;
-}
-
-export interface CaptureAssetResponse {
-  id: string;
-  recordId: string;
-  type: CaptureAssetType;
-  fileName: string;
-  fileSizeBytes?: number;
-  sourceUrl?: string;
-  createdAt: string;
-}
+```text
+detailHref: /registros/:id
+resumeHref: /captura/:id, apenas se status STARTED
 ```
 
-- [ ] **Step 2: Definir o contrato de input remoto**
+Aceite:
 
-Usar uma union discriminada para evitar payloads ambiguos.
+- registros concluídos abrem `/registros/:id`;
+- registros falhos abrem `/registros/:id`;
+- registros em andamento tambem podem abrir `/registros/:id`;
+- se a UI quiser continuar captura, usa um link separado para `/captura/:id`.
 
-```ts
-export type BrowserInputRequest =
-  | { type: "click"; x: number; y: number }
-  | { type: "wheel"; deltaX: number; deltaY: number }
-  | { type: "key"; key: string; code?: string; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean }
-  | { type: "text"; value: string };
+- [ ] **Step 2: Criar o view model de detalhe**
 
-export interface BrowserInputResponse {
-  accepted: true;
-  currentUrl: string;
-}
+Criar `apps/web/src/lib/capture-record-detail-view.ts`.
 
-export interface CaptureVideoStateResponse {
-  recording: boolean;
-  asset?: CaptureAssetResponse;
-}
+Responsabilidades:
 
-export interface CompleteCaptureResponse extends ContentRecordResponse {
-  status: "COMPLETED";
-  imageCount: number;
-  videoCount: number;
-}
+- importar `CaptureRecordDetailsResponse` e `UserResponse` de `@veridit/contracts`;
+- importar `formatCaptureDateTime` e `getCaptureDataTypeLabel` de `@/lib/capture-record-view`;
+- exportar um tipo `CaptureRecordDetailView`;
+- exportar uma funcao `toCaptureRecordDetailView(record, responsibleUser?)`.
+
+Campos do view model:
+
+```text
+id
+title
+siteUrl
+status
+statusLabel
+startedAtLabel
+finishedAtLabel
+dataTypeLabel
+imageCountLabel
+videoCountLabel
+responsibleName
+responsibleEmail
+responsibleUserId
+hasResponsibleUserProfile
+resumeHref
 ```
 
-- [ ] **Step 3: Ajustar `ContentRecordResponse`**
+Regras:
 
-Trocar o status atual:
+- `statusLabel`: `STARTED -> Em andamento`, `COMPLETED -> Concluido`, `FAILED -> Falhou`;
+- `finishedAtLabel`: usar `formatCaptureDateTime`, que retorna `-` quando nao houver data;
+- `dataTypeLabel`: usar `getCaptureDataTypeLabel`;
+- `responsibleName`: `responsibleUser.fullName` quando existir, senao `Usuario nao carregado`;
+- `responsibleEmail`: `responsibleUser.email` quando existir, senao `-`;
+- `responsibleUserId`: sempre vem de `record.userId`;
+- `hasResponsibleUserProfile`: `true` apenas quando nome/email foram carregados;
+- `resumeHref`: `/captura/:id` apenas quando `record.status === "STARTED"`.
 
-```ts
-status: "STARTED" | "COMPLETED";
-```
-
-por:
-
-```ts
-status: CaptureRecordStatus;
-```
-
-- [ ] **Step 4: Build dos contratos**
+- [ ] **Step 3: Rodar build do web para validar tipos**
 
 Run:
 
 ```bash
-npm --workspace @veridit/contracts run build
+npm --workspace @veridit/web run build
 ```
 
 Expected:
 
 ```text
-> @veridit/contracts@0.0.0 build
+exit code 0
 ```
 
-e comando finaliza com exit code `0`.
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/web/src/lib/capture-record-view.ts apps/web/src/lib/capture-record-detail-view.ts
+git commit -m "feat: add capture record detail view model"
+```
+
+---
+
+## Task 2: Pagina Real `/registros/:id`
+
+**Files:**
+- Modify: `apps/web/src/app/registros/[id]/page.tsx`
+
+- [ ] **Step 1: Remover dependencias mockadas**
+
+Em `apps/web/src/app/registros/[id]/page.tsx`, remover imports de:
+
+```text
+getRecordById
+chainOfCustody
+RecordKind
+RecordStatus
+```
+
+Tambem remover da UI qualquer campo que hoje dependa apenas de mock:
+
+```text
+hash
+duration
+size
+relatorio disponivel
+baixar ZIP
+cadeia de custodia mockada
+```
+
+- [ ] **Step 2: Buscar o registro real**
+
+Na pagina server component, manter o padrao do Next.js 16:
+
+```text
+params: Promise<{ id: string }>
+const { id } = await params
+```
+
+Usar `getCaptureRecord(id)`.
+
+Se a resposta falhar:
+
+- renderizar dentro de `AppShell active="dashboard"`;
+- mostrar titulo `Registro nao encontrado`;
+- mostrar a mensagem retornada pelo gateway;
+- mostrar botao para `/dashboard`;
+- nao usar dados ficticios.
+
+- [ ] **Step 3: Buscar o usuario responsavel**
+
+Depois que `getCaptureRecord(id)` retornar `ok`, usar `record.userId` para chamar `getUserProfile(record.userId)`.
+
+Regra:
+
+- se `getUserProfile` retornar `ok`, passar `result.data` para `toCaptureRecordDetailView`;
+- se falhar, passar apenas o registro e guardar a mensagem de erro para um alerta;
+- nao bloquear a visualizacao do registro quando so o perfil falhar.
+
+- [ ] **Step 4: Renderizar os campos do REQ 13**
+
+Renderizar uma tela com estes blocos:
+
+```text
+Cabecalho:
+  titulo do registro
+  status
+  URL/site
+
+Metadados do registro:
+  ID do registro
+  Data/hora inicio
+  Data/hora fim
+  Tipo de dado registrado
+
+Informacoes dos dados:
+  Numero de imagens
+  Numero de videos
+
+Usuario responsavel:
+  Nome
+  Email
+  ID tecnico do usuario
+```
+
+Usar `StatusPill` para status.
+
+Se `hasResponsibleUserProfile` for `false`, exibir um `Alert` discreto informando que nome/email nao puderam ser carregados e que o `userId` tecnico foi preservado.
+
+- [ ] **Step 5: Ajustar acoes da tela**
+
+Mostrar:
+
+```text
+Voltar para Dashboard -> /dashboard
+Nova captura -> /captura
+Continuar captura -> /captura/:id, apenas quando resumeHref existir
+```
+
+Nao mostrar:
+
+```text
+Ver relatorio
+Baixar ZIP
+```
+
+Motivo: esses botoes pertencem ao REQ 14 e REQ 15 e hoje levariam a fluxos mockados ou incompletos.
+
+- [ ] **Step 6: Rodar build do web**
+
+Run:
+
+```bash
+npm --workspace @veridit/web run build
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/web/src/app/registros/[id]/page.tsx
+git commit -m "feat: show real capture record details"
+```
+
+---
+
+## Task 3: Dashboard Apontando Para Detalhes Reais
+
+**Files:**
+- Modify: `apps/web/src/components/veridit/dashboard-client.tsx`
+- Modify: `apps/web/src/components/veridit/evidence-card.tsx`
+- Modify: `apps/web/src/lib/capture-record-view.ts`
+
+- [ ] **Step 1: Ajustar a coluna `Detalhes` no dashboard**
+
+Em `apps/web/src/components/veridit/dashboard-client.tsx`, a coluna `Detalhes` deve usar:
+
+```text
+href = record.detailHref
+label = Abrir
+```
+
+Aceite:
+
+- o link gerado deve ser `/registros/:id`;
+- a coluna nao deve apontar para `/captura/concluida?recordId=...`.
+
+- [ ] **Step 2: Preservar retomada de captura sem confundir com detalhes**
+
+Se for mantida uma acao para registros `STARTED`, ela deve aparecer como acao separada:
+
+```text
+Continuar -> /captura/:id
+```
+
+Nao trocar o significado da coluna `Detalhes`.
+
+- [ ] **Step 3: Ajustar card mobile**
+
+Em `apps/web/src/components/veridit/evidence-card.tsx`, garantir que o link principal usa `record.detailHref`.
+
+Aceite:
+
+- tocar no card mobile abre `/registros/:id`;
+- o card nao usa `/captura/concluida`.
+
+- [ ] **Step 4: Rodar teste de arquitetura**
+
+Run:
+
+```bash
+npm --workspace @veridit/web run test:architecture
+```
+
+Expected nesta etapa:
+
+```text
+falha enquanto o teste ainda espera /captura/concluida
+```
+
+Esta falha e esperada antes da Task 4.
+
+- [ ] **Step 5: Rodar build do web**
+
+Run:
+
+```bash
+npm --workspace @veridit/web run build
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/web/src/components/veridit/dashboard-client.tsx apps/web/src/components/veridit/evidence-card.tsx apps/web/src/lib/capture-record-view.ts
+git commit -m "feat: route record list to real details"
+```
+
+---
+
+## Task 4: Teste De Arquitetura Web
+
+**Files:**
+- Modify: `apps/web/test/gateway-architecture.spec.mjs`
+
+- [ ] **Step 1: Adicionar leitura da pagina de detalhes**
+
+No teste, ler:
+
+```text
+src/app/registros/[id]/page.tsx
+```
+
+Guardar em uma constante chamada `recordDetailsPage`.
+
+- [ ] **Step 2: Bloquear retorno para mock na pagina de detalhes**
+
+Adicionar asserts garantindo que `recordDetailsPage`:
+
+```text
+nao importa "@/lib/mock-data"
+nao usa getRecordById
+nao usa chainOfCustody
+usa getCaptureRecord
+usa getUserProfile
+usa toCaptureRecordDetailView
+```
+
+- [ ] **Step 3: Atualizar asserts de rota da listagem**
+
+Trocar os asserts antigos que proibiam `/registros/:id`.
+
+Novo comportamento esperado:
+
+```text
+capture-record-view deve construir /registros/${encodeURIComponent(record.id)}
+dashboard ou evidence-card devem usar record.detailHref
+nenhuma acao de detalhe deve apontar para /captura/concluida
+```
+
+Manter permitido `/captura/:id` apenas para retomada de captura iniciada.
+
+- [ ] **Step 4: Rodar teste de arquitetura**
+
+Run:
+
+```bash
+npm --workspace @veridit/web run test:architecture
+```
+
+Expected:
+
+```text
+exit code 0
+```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/contracts/src/index.ts
-git commit -m "feat: add capture session contracts"
+git add apps/web/test/gateway-architecture.spec.mjs
+git commit -m "test: require real record details page"
 ```
 
 ---
 
-## Task 2: Capture Service Setup
+## Task 5: Docs Do Fluxo REQ 13
 
 **Files:**
-- Modify: `apps/capture-service/package.json`
-- Modify: `apps/capture-service/.env.example`
-- Modify: `.gitignore`
+- Modify: `docs/04-servicos.md`
 
-- [ ] **Step 1: Adicionar dependencia Playwright e script de teste**
+- [ ] **Step 1: Documentar rotas usadas pelo detalhe**
 
-Em `apps/capture-service/package.json`:
+Na lista de rotas do API Gateway, garantir que constam:
 
-```json
-"test": "jest"
+```text
+- GET /capture/records/:recordId
+- GET /identity/users/:id
 ```
 
-Adicionar em `dependencies`:
+- [ ] **Step 2: Atualizar descricao dos servicos envolvidos**
 
-```json
-"playwright": "^1.61.0"
+Na secao do `capture-service`, registrar:
+
+```text
+Responsavel por registros de conteudo, sessoes de captura e assets capturados. Fornece os metadados e contagens usados no detalhe do REQ 13.
 ```
 
-- [ ] **Step 2: Instalar dependencia**
+Na secao do `identity-service`, registrar:
 
-Run:
+```text
+Fornece nome e email do usuario responsavel exibidos nos detalhes do registro.
+```
+
+- [ ] **Step 3: Commit**
 
 ```bash
-npm install --workspace @veridit/capture-service
-```
-
-Expected:
-
-```text
-added
-```
-
-ou:
-
-```text
-up to date
-```
-
-e `package-lock.json` atualizado quando necessario.
-
-- [ ] **Step 3: Instalar navegador Chromium do Playwright**
-
-Run:
-
-```bash
-npm --workspace @veridit/capture-service exec playwright install chromium
-```
-
-Expected:
-
-```text
-Chromium
-```
-
-e comando finaliza com exit code `0`.
-
-- [ ] **Step 4: Adicionar variaveis de ambiente**
-
-Em `apps/capture-service/.env.example`, adicionar:
-
-```text
-CAPTURE_STORAGE_DIR=storage/captures
-CAPTURE_VIEWPORT_WIDTH=1366
-CAPTURE_VIEWPORT_HEIGHT=768
-CAPTURE_FRAME_QUALITY=72
-CAPTURE_IDLE_TTL_MS=900000
-CAPTURE_ALLOW_PRIVATE_HOSTS=false
-```
-
-- [ ] **Step 5: Ignorar arquivos gerados**
-
-Em `.gitignore`, adicionar:
-
-```text
-apps/capture-service/storage/
-```
-
-- [ ] **Step 6: Validar instalacao**
-
-Run:
-
-```bash
-npm --workspace @veridit/capture-service run build
-```
-
-Expected:
-
-```text
-> @veridit/capture-service@0.0.1 build
-```
-
-e comando finaliza com exit code `0`.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add package.json package-lock.json apps/capture-service/package.json apps/capture-service/.env.example .gitignore
-git commit -m "chore: prepare capture service for playwright"
+git add docs/04-servicos.md
+git commit -m "docs: document record details flow"
 ```
 
 ---
 
-## Task 3: URL Policy
-
-**Files:**
-- Create: `apps/capture-service/src/capture/url-policy.service.ts`
-- Test: `apps/capture-service/src/capture/url-policy.service.spec.ts`
-- Modify: `apps/capture-service/src/app.module.ts`
-
-- [ ] **Step 1: Escrever teste de URLs permitidas**
-
-Criar teste garantindo que estas URLs passam:
-
-```ts
-https://example.com
-http://example.com/path?x=1
-https://sub.example.org
-```
-
-Expected result: `validatePublicHttpUrl(url)` retorna a URL normalizada.
-
-- [ ] **Step 2: Escrever teste de URLs bloqueadas**
-
-Criar teste garantindo que estas entradas falham com `BadRequestException`:
-
-```text
-javascript:alert(1)
-data:text/html,hello
-file:///etc/passwd
-ftp://example.com
-http://localhost:3000
-http://127.0.0.1:3000
-http://10.0.0.1
-http://172.16.0.10
-http://192.168.0.10
-```
-
-- [ ] **Step 3: Implementar service**
-
-Implementar `UrlPolicyService` com estas regras:
-
-- aceitar somente protocolos `http:` e `https:`;
-- exigir hostname;
-- resolver DNS com `node:dns/promises`;
-- bloquear `localhost`, loopback, link-local, private IPv4, private IPv6 e host sem DNS publico;
-- permitir hosts privados apenas quando `CAPTURE_ALLOW_PRIVATE_HOSTS=true`;
-- retornar `url.toString()` normalizado.
-
-- [ ] **Step 4: Registrar provider**
-
-Adicionar `UrlPolicyService` em `providers` no `apps/capture-service/src/app.module.ts`.
-
-- [ ] **Step 5: Rodar teste**
-
-Run:
-
-```bash
-npm --workspace @veridit/capture-service run test -- url-policy.service.spec.ts
-```
-
-Expected:
-
-```text
-PASS src/capture/url-policy.service.spec.ts
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add apps/capture-service/src/capture/url-policy.service.ts apps/capture-service/src/capture/url-policy.service.spec.ts apps/capture-service/src/app.module.ts
-git commit -m "feat: validate capture target urls"
-```
-
----
-
-## Task 4: Capture Storage
-
-**Files:**
-- Create: `apps/capture-service/src/capture/capture-storage.service.ts`
-- Test: `apps/capture-service/src/capture/capture-storage.service.spec.ts`
-- Modify: `apps/capture-service/src/app.module.ts`
-
-- [ ] **Step 1: Escrever teste de diretorio por registro**
-
-Teste:
-
-- dado `CAPTURE_STORAGE_DIR=tmp/captures-test`;
-- quando pedir diretorio para `record-1`;
-- deve criar `tmp/captures-test/record-1`;
-- deve retornar caminho absoluto dentro do storage configurado.
-
-- [ ] **Step 2: Escrever teste de nome de arquivo**
-
-Teste:
-
-- screenshot deve usar formato `screenshot-YYYYMMDD-HHmmss-SSS.png`;
-- video deve usar formato `video-YYYYMMDD-HHmmss-SSS.webm`;
-- nomes nao podem conter `/`, `\`, `..` ou espaco.
-
-- [ ] **Step 3: Implementar service**
-
-Responsabilidades:
-
-- ler `CAPTURE_STORAGE_DIR`;
-- criar diretorios com `fs.promises.mkdir(..., { recursive: true })`;
-- gerar nomes deterministamente por tipo e data;
-- retornar tamanho com `fs.promises.stat(filePath).size`;
-- rejeitar tentativa de resolver caminho fora do storage.
-
-- [ ] **Step 4: Registrar provider**
-
-Adicionar `CaptureStorageService` em `providers` no `AppModule`.
-
-- [ ] **Step 5: Rodar teste**
-
-Run:
-
-```bash
-npm --workspace @veridit/capture-service run test -- capture-storage.service.spec.ts
-```
-
-Expected:
-
-```text
-PASS src/capture/capture-storage.service.spec.ts
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add apps/capture-service/src/capture/capture-storage.service.ts apps/capture-service/src/capture/capture-storage.service.spec.ts apps/capture-service/src/app.module.ts
-git commit -m "feat: add capture asset storage"
-```
-
----
-
-## Task 5: Playwright Session Manager
-
-**Files:**
-- Create: `apps/capture-service/src/capture/playwright-browser.service.ts`
-- Create: `apps/capture-service/src/capture/capture-session-manager.service.ts`
-- Test: `apps/capture-service/src/capture/capture-session-manager.service.spec.ts`
-- Modify: `apps/capture-service/src/app.module.ts`
-
-- [ ] **Step 1: Definir interface interna de sessao**
-
-Criar tipos internos pequenos:
-
-```ts
-type CaptureSession = {
-  recordId: string;
-  userId: string;
-  browser: Browser;
-  context: BrowserContext;
-  page: Page;
-  viewport: { width: number; height: number };
-  recordingPath?: string;
-  lastActivityAt: number;
-};
-```
-
-- [ ] **Step 2: Escrever testes com Playwright mockado**
-
-Cobrir estes casos:
-
-- `startSession` abre browser, context e page com viewport configurado;
-- `getFrame` chama `page.screenshot({ type: "jpeg", quality })` e retorna base64;
-- `sendInput` mapeia `click` para `page.mouse.click(x, y)`;
-- `sendInput` mapeia `wheel` para `page.mouse.wheel(deltaX, deltaY)`;
-- `sendInput` mapeia `text` para `page.keyboard.insertText(value)`;
-- `captureScreenshot` salva PNG em disco e retorna caminho;
-- `startVideo` falha com `ConflictException` se ja estiver gravando;
-- `stopVideo` falha com `ConflictException` se nao estiver gravando;
-- `closeSession` fecha browser e remove sessao da memoria;
-- sessao inexistente retorna `NotFoundException`.
-
-- [ ] **Step 3: Implementar `PlaywrightBrowserService`**
-
-Responsabilidade unica:
-
-- chamar `chromium.launch({ headless: true })`;
-- criar context com viewport;
-- criar page;
-- executar `page.goto(siteUrl, { waitUntil: "domcontentloaded", timeout: 30000 })`;
-- retornar `{ browser, context, page }`.
-
-- [ ] **Step 4: Implementar `CaptureSessionManagerService`**
-
-Responsabilidades:
-
-- manter `Map<string, CaptureSession>`;
-- `startSession(record)` inicia browser remoto;
-- `getFrame(recordId)` retorna JPEG base64;
-- `sendInput(recordId, input)` aplica input na pagina;
-- `captureScreenshot(recordId, filePath)` salva PNG;
-- `startVideo(recordId, filePath)` chama `page.screencast.start({ path: filePath })`;
-- `stopVideo(recordId)` chama `page.screencast.stop()`;
-- `closeSession(recordId)` fecha browser;
-- `closeIdleSessions()` encerra sessoes com `lastActivityAt` acima de `CAPTURE_IDLE_TTL_MS`;
-- `onModuleDestroy()` fecha todos os browsers abertos.
-
-- [ ] **Step 5: Registrar providers**
-
-Adicionar em `AppModule`:
-
-```ts
-PlaywrightBrowserService,
-CaptureSessionManagerService
-```
-
-- [ ] **Step 6: Rodar teste**
-
-Run:
-
-```bash
-npm --workspace @veridit/capture-service run test -- capture-session-manager.service.spec.ts
-```
-
-Expected:
-
-```text
-PASS src/capture/capture-session-manager.service.spec.ts
-```
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add apps/capture-service/src/capture/playwright-browser.service.ts apps/capture-service/src/capture/capture-session-manager.service.ts apps/capture-service/src/capture/capture-session-manager.service.spec.ts apps/capture-service/src/app.module.ts
-git commit -m "feat: manage remote browser capture sessions"
-```
-
----
-
-## Task 6: Capture Service HTTP API
-
-**Files:**
-- Create: `apps/capture-service/src/dto/start-capture.dto.ts`
-- Create: `apps/capture-service/src/dto/browser-input.dto.ts`
-- Modify: `apps/capture-service/src/app.controller.ts`
-- Modify: `apps/capture-service/src/app.service.ts`
-- Test: `apps/capture-service/src/app.controller.spec.ts`
-- Test: `apps/capture-service/src/app.service.spec.ts`
-
-- [ ] **Step 1: Criar DTO de inicio**
-
-`StartCaptureDto`:
-
-- `userId`: string obrigatoria;
-- `siteUrl`: URL obrigatoria;
-- `title`: string opcional.
-
-Quando `title` vier vazio, o service deve gerar:
-
-```text
-Captura - <hostname> - <YYYY-MM-DD HH:mm>
-```
-
-- [ ] **Step 2: Criar DTO de input**
-
-`BrowserInputDto` deve validar:
-
-- `type` em `click`, `wheel`, `key`, `text`;
-- `click`: `x` e `y` numericos, inteiros, `>= 0`;
-- `wheel`: `deltaX` e `deltaY` numericos;
-- `key`: `key` string nao vazia;
-- `text`: `value` string nao vazia com limite de 500 caracteres.
-
-- [ ] **Step 3: Escrever testes do service**
-
-Cobrir:
-
-- `startRecord` valida URL, cria `ContentRecord` com `STARTED` e inicia Playwright;
-- `getFrame` delega para session manager;
-- `sendInput` delega para session manager;
-- `captureScreenshot` salva PNG, cria `CaptureAsset` tipo `IMAGE` e retorna asset;
-- `startVideo` inicia gravacao sem criar asset;
-- `stopVideo` cria `CaptureAsset` tipo `VIDEO` e retorna asset;
-- `completeRecord` fecha sessao, atualiza `finishedAt/status`, conta assets e publica `capture.completed`.
-
-- [ ] **Step 4: Implementar `AppService` real**
-
-Adicionar metodos:
-
-```ts
-startRecord(body: StartCaptureRequest): Promise<StartCaptureSessionResponse>
-getRecord(recordId: string): Promise<ContentRecordResponse>
-getFrame(recordId: string): Promise<CaptureFrameResponse>
-sendInput(recordId: string, input: BrowserInputRequest): Promise<BrowserInputResponse>
-captureScreenshot(recordId: string): Promise<CaptureAssetResponse>
-startVideo(recordId: string): Promise<CaptureVideoStateResponse>
-stopVideo(recordId: string): Promise<CaptureVideoStateResponse>
-completeRecord(recordId: string): Promise<CompleteCaptureResponse>
-```
-
-Erro esperado:
-
-- registro inexistente: `NotFoundException`;
-- registro ja concluido: `ConflictException`;
-- sessao de browser ausente em registro `STARTED`: `ConflictException` com mensagem `Sessao de captura nao esta ativa`;
-- URL bloqueada: `BadRequestException`.
-
-- [ ] **Step 5: Expor rotas no controller**
-
-Mapeamento:
-
-```text
-POST /records -> startRecord
-GET /records/:recordId -> getRecord
-GET /records/:recordId/frame -> getFrame
-POST /records/:recordId/input -> sendInput
-POST /records/:recordId/screenshots -> captureScreenshot
-POST /records/:recordId/video/start -> startVideo
-POST /records/:recordId/video/stop -> stopVideo
-POST /records/:recordId/complete -> completeRecord
-```
-
-Manter `POST /records/mock` funcionando para demos antigas ate a UI deixar de usar.
-
-- [ ] **Step 6: Rodar testes do capture-service**
-
-Run:
-
-```bash
-npm --workspace @veridit/capture-service run test
-```
-
-Expected:
-
-```text
-PASS
-```
-
-- [ ] **Step 7: Rodar build**
-
-Run:
-
-```bash
-npm --workspace @veridit/capture-service run build
-```
-
-Expected: exit code `0`.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add apps/capture-service/src apps/capture-service/package.json apps/capture-service/.env.example
-git commit -m "feat: expose real capture session api"
-```
-
----
-
-## Task 7: API Gateway Proxy
-
-**Files:**
-- Modify: `apps/api-gateway/src/app.controller.ts`
-- Modify: `apps/api-gateway/src/app.service.ts`
-- Test: `apps/api-gateway/src/app.controller.spec.ts`
-- Test: `apps/api-gateway/src/app.service.spec.ts`
-
-- [ ] **Step 1: Escrever testes de controller**
-
-Adicionar expectativas:
-
-- `POST /capture/records` chama `appService.startCapture`;
-- `GET /capture/records/:recordId` chama `appService.getCaptureRecord`;
-- `GET /capture/records/:recordId/frame` chama `appService.getCaptureFrame`;
-- `POST /capture/records/:recordId/input` chama `appService.sendCaptureInput`;
-- `POST /capture/records/:recordId/screenshots` chama `appService.captureScreenshot`;
-- `POST /capture/records/:recordId/video/start` chama `appService.startCaptureVideo`;
-- `POST /capture/records/:recordId/video/stop` chama `appService.stopCaptureVideo`;
-- `POST /capture/records/:recordId/complete` chama `appService.completeCapture`.
-
-- [ ] **Step 2: Escrever testes de service**
-
-Mockar `fetch` e verificar que as chamadas vao para:
-
-```text
-http://127.0.0.1:3103/records
-http://127.0.0.1:3103/records/record-1
-http://127.0.0.1:3103/records/record-1/frame
-http://127.0.0.1:3103/records/record-1/input
-http://127.0.0.1:3103/records/record-1/screenshots
-http://127.0.0.1:3103/records/record-1/video/start
-http://127.0.0.1:3103/records/record-1/video/stop
-http://127.0.0.1:3103/records/record-1/complete
-```
-
-Preservar erros `400`, `404` e `409` do `capture-service` como `HttpException`, igual ao fluxo de billing com `preserveClientErrors`.
-
-- [ ] **Step 3: Implementar metodos no service**
-
-Adicionar metodos com nomes alinhados aos testes:
-
-```ts
-startCapture(body, idempotencyKey?)
-getCaptureRecord(recordId)
-getCaptureFrame(recordId)
-sendCaptureInput(recordId, body)
-captureScreenshot(recordId)
-startCaptureVideo(recordId)
-stopCaptureVideo(recordId)
-completeCapture(recordId)
-```
-
-Nao exigir `Idempotency-Key` nesta primeira versao.
-
-- [ ] **Step 4: Implementar rotas no controller**
-
-Usar os mesmos paths publicos definidos em "Rotas Alvo".
-
-- [ ] **Step 5: Rodar testes**
-
-Run:
-
-```bash
-npm --workspace @veridit/api-gateway run test
-```
-
-Expected:
-
-```text
-PASS src/app.controller.spec.ts
-PASS src/app.service.spec.ts
-```
-
-- [ ] **Step 6: Rodar build**
-
-Run:
-
-```bash
-npm --workspace @veridit/api-gateway run build
-```
-
-Expected: exit code `0`.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add apps/api-gateway/src/app.controller.ts apps/api-gateway/src/app.service.ts apps/api-gateway/src/app.controller.spec.ts apps/api-gateway/src/app.service.spec.ts
-git commit -m "feat: proxy real capture session routes"
-```
-
----
-
-## Task 8: Web Gateway Client
-
-**Files:**
-- Modify: `apps/web/src/lib/gateway.ts`
-
-- [ ] **Step 1: Adicionar funcoes HTTP**
-
-Adicionar funcoes pequenas:
-
-```ts
-startCaptureSession(payload)
-getCaptureRecord(recordId)
-getCaptureFrame(recordId)
-sendCaptureInput(recordId, payload)
-captureScreenshot(recordId)
-startCaptureVideo(recordId)
-stopCaptureVideo(recordId)
-completeCapture(recordId)
-```
-
-- [ ] **Step 2: Garantir retorno tipado**
-
-Importar tipos de `@veridit/contracts`:
-
-```ts
-StartCaptureSessionResponse
-CaptureFrameResponse
-BrowserInputRequest
-BrowserInputResponse
-CaptureAssetResponse
-CaptureVideoStateResponse
-CompleteCaptureResponse
-```
-
-- [ ] **Step 3: Manter `startMockCapture` temporariamente**
-
-Nao remover `startMockCapture` neste task. A remocao deve acontecer apenas depois que a nova UI nao importar mais essa funcao.
-
-- [ ] **Step 4: Build do web**
-
-Run:
-
-```bash
-npm --workspace @veridit/web run build
-```
-
-Expected: exit code `0`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add apps/web/src/lib/gateway.ts
-git commit -m "feat: add capture session gateway client"
-```
-
----
-
-## Task 9: URL Entry Screen
-
-**Files:**
-- Modify: `apps/web/src/app/captura/page.tsx`
-- Modify: `apps/web/src/components/veridit/capture-client.tsx`
-
-- [ ] **Step 1: Simplificar a pagina**
-
-`apps/web/src/app/captura/page.tsx` deve continuar usando:
-
-```tsx
-<AppShell active="capture">
-```
-
-Atualizar o heading:
-
-```text
-title: "Nova captura"
-description: "Informe o site que sera aberto em uma sessao navegavel para registro."
-```
-
-- [ ] **Step 2: Trocar formulario antigo**
-
-`CaptureClient` deve ter:
-
-- input obrigatorio `URL do site`;
-- input opcional `Titulo do registro`;
-- resumo de saldo existente;
-- botao `Abrir sessao de captura`;
-- estado loading enquanto chama o gateway.
-
-Remover da tela inicial:
-
-- escolha previa entre video e screenshot;
-- preview mock;
-- checklist tecnico;
-- switch de rolagem;
-- chamada para `startMockCapture`.
-
-- [ ] **Step 3: Gerar titulo quando vazio**
-
-No submit:
-
-- ler sessao com `getAuthSession()`;
-- validar sessao ausente com toast e retorno;
-- chamar `startCaptureSession`;
-- se `title` estiver vazio, enviar string vazia e deixar o backend gerar o titulo;
-- em sucesso, navegar para:
-
-```ts
-router.push(`/captura/${result.data.id}`);
-```
-
-- [ ] **Step 4: Tratar erro de URL bloqueada**
-
-Se gateway retornar `400`, mostrar:
-
-```text
-Nao foi possivel abrir essa URL para captura.
-```
-
-Description:
-
-```text
-Use um endereco publico iniciado por http:// ou https://.
-```
-
-- [ ] **Step 5: Rodar build**
-
-Run:
-
-```bash
-npm --workspace @veridit/web run build
-```
-
-Expected: exit code `0`.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add apps/web/src/app/captura/page.tsx apps/web/src/components/veridit/capture-client.tsx
-git commit -m "feat: create capture url entry screen"
-```
-
----
-
-## Task 10: Navigable Capture Workspace
-
-**Files:**
-- Create: `apps/web/src/app/captura/[recordId]/page.tsx`
-- Create: `apps/web/src/components/veridit/capture-workspace-client.tsx`
-- Modify: `apps/web/src/app/captura/concluida/page.tsx`
-
-- [ ] **Step 1: Criar pagina por registro**
-
-`apps/web/src/app/captura/[recordId]/page.tsx` deve:
-
-- receber `params.recordId`;
-- renderizar `AppShell active="capture"`;
-- renderizar `CaptureWorkspaceClient recordId={recordId}`.
-
-- [ ] **Step 2: Criar layout do workspace**
-
-`CaptureWorkspaceClient` deve ter:
-
-- area principal com container 16:9;
-- imagem do frame remoto dentro do container;
-- camada transparente por cima para capturar mouse, teclado e paste;
-- lateral fixa com botoes:
-  - `Tirar print`;
-  - `Iniciar gravacao`;
-  - `Parar gravacao`;
-  - `Concluir captura`;
-- painel pequeno com URL atual e status.
-
-- [ ] **Step 3: Implementar polling de frame**
-
-Comportamento:
-
-- buscar frame inicial ao montar;
-- atualizar a cada `500 ms` enquanto `document.visibilityState === "visible"`;
-- pausar polling enquanto uma requisicao de frame estiver em andamento;
-- mostrar skeleton enquanto nao houver frame;
-- em erro `409`, mostrar estado:
-
-```text
-Sessao de captura nao esta ativa.
-```
-
-- [ ] **Step 4: Mapear clique**
-
-No `pointerdown` da camada transparente:
-
-- medir `getBoundingClientRect()`;
-- converter coordenadas renderizadas para viewport remoto;
-- enviar:
-
-```ts
-{ type: "click", x, y }
-```
-
-- chamar `refreshFrame()` apos o input.
-
-- [ ] **Step 5: Mapear scroll**
-
-No `wheel`:
-
-- chamar `event.preventDefault()`;
-- enviar:
-
-```ts
-{ type: "wheel", deltaX: event.deltaX, deltaY: event.deltaY }
-```
-
-- chamar `refreshFrame()` apos o input.
-
-- [ ] **Step 6: Mapear teclado**
-
-A camada deve ter `tabIndex={0}`.
-
-No `keydown`:
-
-- ignorar teclas modificadoras isoladas (`Shift`, `Control`, `Alt`, `Meta`);
-- enviar:
-
-```ts
-{
-  type: "key",
-  key: event.key,
-  code: event.code,
-  ctrlKey: event.ctrlKey,
-  shiftKey: event.shiftKey,
-  altKey: event.altKey,
-  metaKey: event.metaKey
-}
-```
-
-- chamar `refreshFrame()` apos o input.
-
-- [ ] **Step 7: Mapear paste**
-
-No `paste`:
-
-- ler `event.clipboardData.getData("text")`;
-- se houver texto, enviar:
-
-```ts
-{ type: "text", value }
-```
-
-- limitar no frontend a 500 caracteres para bater com DTO.
-
-- [ ] **Step 8: Implementar botao de print**
-
-Ao clicar:
-
-- chamar `captureScreenshot(recordId)`;
-- mostrar toast:
-
-```text
-Print salvo no registro.
-```
-
-- chamar `refreshFrame()`.
-
-- [ ] **Step 9: Implementar botoes de video**
-
-Estado:
-
-- `recording=false`: botao `Iniciar gravacao` habilitado, `Parar gravacao` desabilitado;
-- `recording=true`: botao `Iniciar gravacao` desabilitado, `Parar gravacao` habilitado.
-
-Ao iniciar:
-
-- chamar `startCaptureVideo(recordId)`;
-- mostrar toast:
-
-```text
-Gravacao iniciada.
-```
-
-Ao parar:
-
-- chamar `stopCaptureVideo(recordId)`;
-- mostrar toast:
-
-```text
-Video salvo no registro.
-```
-
-- [ ] **Step 10: Implementar conclusao**
-
-Ao clicar `Concluir captura`:
-
-- se `recording=true`, primeiro chamar `stopCaptureVideo(recordId)`;
-- chamar `completeCapture(recordId)`;
-- navegar para:
-
-```ts
-router.push(`/captura/concluida?recordId=${recordId}`);
-```
-
-- [ ] **Step 11: Atualizar tela concluida**
-
-`/captura/concluida` deve ler `recordId` via `searchParams` e exibir:
-
-```text
-Registro: <recordId>
-```
-
-Manter links para dashboard e nova captura.
-
-- [ ] **Step 12: Build do web**
-
-Run:
-
-```bash
-npm --workspace @veridit/web run build
-```
-
-Expected: exit code `0`.
-
-- [ ] **Step 13: Commit**
-
-```bash
-git add apps/web/src/app/captura/[recordId]/page.tsx apps/web/src/components/veridit/capture-workspace-client.tsx apps/web/src/app/captura/concluida/page.tsx
-git commit -m "feat: add navigable capture workspace"
-```
-
----
-
-## Task 11: End-To-End Manual Verification
+## Task 6: Verificacao Final
 
 **Files:**
 - No code changes expected.
 
-- [ ] **Step 1: Gerar Prisma se necessario**
+- [ ] **Step 1: Rodar teste de arquitetura web**
 
 Run:
 
 ```bash
-npm run prisma:generate
+npm --workspace @veridit/web run test:architecture
 ```
 
-Expected: exit code `0`.
+Expected:
 
-- [ ] **Step 2: Subir ambiente**
+```text
+exit code 0
+```
+
+- [ ] **Step 2: Rodar build do web**
 
 Run:
+
+```bash
+npm --workspace @veridit/web run build
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 3: Rodar testes/builds dos servicos afetados indiretamente**
+
+Mesmo sem mudanca backend, rodar para garantir contratos e gateway:
+
+```bash
+npm --workspace @veridit/contracts run build
+npm --workspace @veridit/api-gateway run test
+npm --workspace @veridit/api-gateway run build
+```
+
+Expected:
+
+```text
+todos com exit code 0
+```
+
+- [ ] **Step 4: Rodar build geral**
+
+Run:
+
+```bash
+npm run build
+```
+
+Expected:
+
+```text
+exit code 0
+```
+
+- [ ] **Step 5: Verificacao manual**
+
+Subir ambiente:
 
 ```bash
 npm run dev
 ```
 
-Expected:
+Fluxo no navegador:
 
 ```text
-@veridit/web: dev
-@veridit/api-gateway: dev
-@veridit/capture-service: dev
-```
-
-e servicos respondendo nas portas do repo.
-
-- [ ] **Step 3: Verificar health**
-
-Abrir:
-
-```text
-http://localhost:3001/capture/health
-```
-
-Expected:
-
-```json
-{ "service": "capture-service", "status": "ok" }
-```
-
-- [ ] **Step 4: Fluxo feliz com site publico**
-
-No browser:
-
-1. abrir `http://localhost:3000/dashboard`;
-2. clicar `Nova Captura`;
-3. informar `https://example.com`;
-4. clicar `Abrir sessao de captura`;
-5. confirmar que a pagina vai para `/captura/<recordId>`;
-6. confirmar que o container mostra o conteudo de `example.com`;
-7. clicar dentro do container;
-8. clicar `Tirar print`;
-9. clicar `Iniciar gravacao`;
-10. rolar a pagina dentro do container;
-11. clicar `Parar gravacao`;
-12. clicar `Concluir captura`;
-13. confirmar redirecionamento para `/captura/concluida?recordId=<recordId>`.
-
-- [ ] **Step 5: Verificar banco**
-
-No banco `veridit_capture`, confirmar:
-
-```sql
-select id, status, "siteUrl", "finishedAt" from "ContentRecord" order by "startedAt" desc limit 1;
-select "recordId", type, "fileName", "fileSizeBytes" from "CaptureAsset" order by "createdAt" desc limit 5;
-```
-
-Expected:
-
-- `ContentRecord.status = COMPLETED`;
-- pelo menos um asset `IMAGE`;
-- um asset `VIDEO` quando a gravacao foi iniciada e parada;
-- `fileSizeBytes > 0`.
-
-- [ ] **Step 6: Verificar storage**
-
-Confirmar que existe diretorio:
-
-```text
-apps/capture-service/storage/captures/<recordId>
-```
-
-Expected:
-
-- arquivo `.png` criado pelo print;
-- arquivo `.webm` criado pelo video;
-- ambos com tamanho maior que zero.
-
-- [ ] **Step 7: Fluxo de URL bloqueada**
-
-Na tela `/captura`, tentar:
-
-```text
-http://localhost:3000
-```
-
-Expected:
-
-- nao abre sessao;
-- mostra toast de URL invalida/bloqueada;
-- nenhum browser remoto fica aberto.
-
-- [ ] **Step 8: Verificar encerramento**
-
-Depois de concluir a captura:
-
-- chamar `GET /capture/records/:recordId/frame`;
-- expected: `409` com mensagem `Sessao de captura nao esta ativa`.
-
-- [ ] **Step 9: Rodar suite final**
-
-Run:
-
-```bash
-npm --workspace @veridit/capture-service run test
-npm --workspace @veridit/api-gateway run test
-npm --workspace @veridit/web run build
-npm run build
-```
-
-Expected: todos finalizam com exit code `0`.
-
-- [ ] **Step 10: Commit de ajustes de verificacao**
-
-Se a verificacao manual exigir pequenos ajustes, fazer commit separado:
-
-```bash
-git add <arquivos-ajustados>
-git commit -m "fix: stabilize capture session flow"
+1. Fazer login.
+2. Abrir /captura.
+3. Criar uma captura.
+4. Tirar pelo menos um print ou gravar um video.
+5. Finalizar a captura.
+6. Abrir /dashboard.
+7. Clicar em Abrir na coluna Detalhes.
+8. Confirmar que a URL e /registros/:id.
+9. Confirmar que aparecem id, titulo, inicio, fim, tipo, imagens, videos, nome e email do responsavel.
+10. Confirmar que nao aparecem dados mockados como hash ficticio, tamanho ficticio ou cadeia de custodia fixa.
 ```
 
 ---
 
 ## Acceptance Criteria
 
-- `/captura` exibe uma tela simples para iniciar nova captura a partir de URL.
-- Ao iniciar, o backend cria `ContentRecord` com status `STARTED`.
-- O usuario e redirecionado para `/captura/<recordId>`.
-- O container da sessao mostra frames reais do site aberto por Playwright.
-- Clique, scroll, teclado e paste no container sao enviados para o navegador remoto.
-- Botao `Tirar print` cria arquivo PNG e linha `CaptureAsset` tipo `IMAGE`.
-- Botao `Iniciar gravacao` inicia gravacao da sessao remota.
-- Botao `Parar gravacao` cria arquivo WEBM e linha `CaptureAsset` tipo `VIDEO`.
-- Botao `Concluir captura` fecha navegador remoto, marca registro como `COMPLETED`, seta `finishedAt` e publica `capture.completed`.
-- Frontend chama apenas `NEXT_PUBLIC_API_GATEWAY_URL`.
-- URLs privadas, locais e protocolos nao HTTP(S) sao bloqueados por padrao.
-- Build de `contracts`, `capture-service`, `api-gateway` e `web` passa.
+- `/registros/:id` usa dados reais de `getCaptureRecord(id)`.
+- `/registros/:id` usa `getUserProfile(record.userId)` para exibir nome e email do usuario responsavel.
+- `/registros/:id` nao importa nem usa `apps/web/src/lib/mock-data.ts`.
+- A tela exibe todos os campos do Apêndice A para `Detalhes dos registros`.
+- Dashboard e cards mobile abrem `/registros/:id` para detalhes.
+- Fluxos de relatorio e ZIP nao sao apresentados como prontos no REQ 13.
+- Frontend continua chamando somente o API Gateway.
+- Teste de arquitetura web passa.
+- Build do web passa.
+- Build geral passa.
 
 ## Risks And Controls
 
-- **Sites com bot protection:** Playwright abre o site como navegador real, mas alguns sites podem bloquear automacao. O sistema deve mostrar erro claro quando `page.goto` falhar.
-- **Latencia do polling:** 500 ms e suficiente para primeiro corte. Reduzir demais aumenta CPU e trafego por base64.
-- **SSRF:** URL policy bloqueia host privado por padrao.
-- **Memoria de sessoes:** sessoes ficam em memoria. TTL fecha sessoes esquecidas.
-- **Arquivos locais:** storage local funciona para desenvolvimento. Deploy em producao deve mapear `CAPTURE_STORAGE_DIR` para volume persistente.
-
-## Documentation Notes
-
-Depois da implementacao, atualizar:
-
-- `docs/04-servicos.md` com as novas rotas reais de captura.
-- `docs/07-como-implementar-novas-features.md` removendo a pendencia generica de "captura real" ou apontando para o que ainda falta: relatorio real, ZIP e consumo de credito.
-- `docs/02-como-rodar.md` com `playwright install chromium` e as variaveis `CAPTURE_*`.
+- **Sem autorizacao backend forte:** qualquer usuario com um `recordId` pode tentar buscar detalhes enquanto JWT/backend guard nao estiver implementado. Controlar isso em requisito separado de seguranca/autenticacao.
+- **Perfil do usuario pode falhar:** a pagina deve continuar exibindo o registro e mostrar `userId`; nome/email aparecem quando `identity-service` responder.
+- **Pagina de relatorio ainda mockada:** remover links de relatorio/ZIP desta tela evita afirmar que REQ 14/15 estao prontos.
+- **`/captura/concluida` ainda existe:** manter como tela de pos-finalizacao, mas o fluxo oficial de detalhe listado deve ser `/registros/:id`.
 
 ## Self-Review
 
-- Spec coverage: o plano cobre tela de URL, container navegavel, print do container, gravacao de video, persistencia de assets e conclusao basica do registro.
-- Placeholder scan: o plano nao usa marcadores de trabalho indefinido nem passos sem criterio de conclusao.
-- Type consistency: rotas, contratos e nomes de metodos usam `recordId`, `CaptureFrameResponse`, `BrowserInputRequest`, `CaptureAssetResponse` e `CompleteCaptureResponse` de forma consistente.
+- Spec coverage: o plano cobre id, titulo, inicio, fim, tipo de dados, numero de imagens, numero de videos e usuario responsavel com nome/email.
+- Placeholder scan: nao ha marcadores de trabalho indefinido nem etapa sem criterio de aceite.
+- Type consistency: `CaptureRecordDetailsResponse`, `UserResponse`, `toCaptureRecordDetailView`, `detailHref` e `resumeHref` sao usados de forma consistente.

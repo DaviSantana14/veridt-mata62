@@ -37,6 +37,7 @@ function createPrismaMock() {
   return {
     contentRecord: {
       create: jest.fn(),
+      findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
     },
@@ -268,6 +269,56 @@ describe('AppService capture records', () => {
     });
   });
 
+  it('lists records for a user ordered by start date descending', async () => {
+    prisma.contentRecord.findMany.mockResolvedValue([
+      makeRecord({
+        id: 'record-2',
+        title: 'Registro mais recente',
+        status: 'COMPLETED',
+        details: 'Concluido com evidencias.',
+        startedAt: new Date('2026-07-05T12:00:00.000Z'),
+        finishedAt: new Date('2026-07-05T12:05:00.000Z'),
+        assets: [{ type: 'IMAGE' }, { type: 'VIDEO' }],
+      }),
+      makeRecord({
+        id: 'record-1',
+        title: 'Registro antigo',
+        details: null,
+        startedAt: new Date('2026-07-04T10:00:00.000Z'),
+        finishedAt: null,
+        assets: [],
+      }),
+    ]);
+
+    await expect(service.listRecordsForUser('user-1')).resolves.toEqual({
+      userId: 'user-1',
+      records: [
+        expect.objectContaining({
+          id: 'record-2',
+          title: 'Registro mais recente',
+          status: 'COMPLETED',
+          details: 'Concluido com evidencias.',
+          imageCount: 1,
+          videoCount: 1,
+        }),
+        expect.objectContaining({
+          id: 'record-1',
+          title: 'Registro antigo',
+          status: 'STARTED',
+          details: undefined,
+          imageCount: 0,
+          videoCount: 0,
+        }),
+      ],
+    });
+
+    expect(prisma.contentRecord.findMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+      orderBy: { startedAt: 'desc' },
+      include: { assets: { select: { type: true } } },
+    });
+  });
+
   it('throws not found for missing records', async () => {
     prisma.contentRecord.findUnique.mockResolvedValue(null);
 
@@ -459,6 +510,51 @@ describe('AppService capture records', () => {
     });
   });
 
+  it('completes a started record when closeSession finds no active session', async () => {
+    prisma.contentRecord.findUnique.mockResolvedValue(makeRecord());
+    sessionManager.closeSession.mockRejectedValue(
+      new Error('browser has been closed'),
+    );
+    prisma.contentRecord.update.mockResolvedValue(
+      makeRecord({
+        status: 'COMPLETED',
+        finishedAt,
+      }),
+    );
+    prisma.captureAsset.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+
+    await expect(service.completeRecord('record-1')).resolves.toEqual({
+      id: 'record-1',
+      userId: 'user-1',
+      title: 'Captura',
+      siteUrl: 'https://example.com/path',
+      status: 'COMPLETED',
+      startedAt: '2026-01-02T03:04:05.000Z',
+      finishedAt: '2026-01-02T03:08:09.000Z',
+      imageCount: 1,
+      videoCount: 0,
+    });
+    expect(sessionManager.closeSession).toHaveBeenCalledWith('record-1');
+    expect(prisma.contentRecord.update).toHaveBeenCalledWith({
+      where: {
+        id: 'record-1',
+      },
+      data: {
+        status: 'COMPLETED',
+        finishedAt: startedAt,
+      },
+    });
+    expect(eventsPublisher.publishCaptureCompleted).toHaveBeenCalledWith({
+      recordId: 'record-1',
+      userId: 'user-1',
+      title: 'Captura',
+      siteUrl: 'https://example.com/path',
+      imageCount: 1,
+      videoCount: 0,
+      occurredAt: '2026-01-02T03:08:09.000Z',
+    });
+  });
+
   it('persists an active video before completing a record', async () => {
     prisma.contentRecord.findUnique.mockResolvedValue(makeRecord());
     storage.createAssetPath.mockResolvedValue({
@@ -524,6 +620,47 @@ describe('AppService capture records', () => {
 
     await expect(service.getFrame('record-1')).rejects.toMatchObject({
       message: 'Sessao de captura nao esta ativa',
+    });
+  });
+
+  it('completes a started record with pending video when the session is inactive', async () => {
+    prisma.contentRecord.findUnique.mockResolvedValue(makeRecord());
+    storage.createAssetPath.mockResolvedValue({
+      fileName: 'video.webm',
+      filePath: 'storage/video.webm',
+    });
+    sessionManager.stopVideo.mockRejectedValue(
+      new Error('Target page has been closed'),
+    );
+    sessionManager.closeSession.mockRejectedValue(
+      new Error('context closed'),
+    );
+    prisma.contentRecord.update.mockResolvedValue(
+      makeRecord({
+        status: 'COMPLETED',
+        finishedAt,
+      }),
+    );
+    prisma.captureAsset.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+
+    await service.startVideo('record-1');
+
+    await expect(service.completeRecord('record-1')).resolves.toMatchObject({
+      id: 'record-1',
+      status: 'COMPLETED',
+      imageCount: 1,
+      videoCount: 0,
+    });
+    expect(sessionManager.stopVideo).toHaveBeenCalledWith('record-1');
+    expect(prisma.captureAsset.create).not.toHaveBeenCalled();
+    expect(prisma.contentRecord.update).toHaveBeenCalledWith({
+      where: {
+        id: 'record-1',
+      },
+      data: {
+        status: 'COMPLETED',
+        finishedAt: startedAt,
+      },
     });
   });
 });

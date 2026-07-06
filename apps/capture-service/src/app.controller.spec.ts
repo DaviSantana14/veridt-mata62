@@ -7,6 +7,7 @@ import type {
   CompleteCaptureResponse,
   ContentRecordResponse,
   HealthResponse,
+  ListCaptureRecordsResponse,
   NavigateCaptureResponse,
   StartCaptureSessionResponse,
 } from '@veridit/contracts';
@@ -40,6 +41,18 @@ const recordDetailsResponse: CaptureRecordDetailsResponse = {
   ...contentRecordResponse,
   imageCount: 2,
   videoCount: 1,
+};
+
+const listRecordsResponse: ListCaptureRecordsResponse = {
+  userId: 'user-1',
+  records: [
+    {
+      ...contentRecordResponse,
+      details: 'Concluido com evidencias.',
+      imageCount: 1,
+      videoCount: 0,
+    },
+  ],
 };
 
 const startResponse: StartCaptureSessionResponse = {
@@ -101,6 +114,7 @@ describe('Capture AppController', () => {
     createMockRecord: jest.Mock;
     startRecord: jest.Mock;
     getRecord: jest.Mock;
+    listRecordsForUser: jest.Mock;
     getFrame: jest.Mock;
     sendInput: jest.Mock;
     navigate: jest.Mock;
@@ -116,6 +130,7 @@ describe('Capture AppController', () => {
       createMockRecord: jest.fn().mockResolvedValue(contentRecordResponse),
       startRecord: jest.fn().mockResolvedValue(startResponse),
       getRecord: jest.fn().mockResolvedValue(recordDetailsResponse),
+      listRecordsForUser: jest.fn().mockResolvedValue(listRecordsResponse),
       getFrame: jest.fn().mockResolvedValue(frameResponse),
       sendInput: jest.fn().mockResolvedValue(inputResponse),
       navigate: jest.fn().mockResolvedValue(navigateResponse),
@@ -178,6 +193,14 @@ describe('Capture AppController', () => {
     expect(appService.startVideo).toHaveBeenCalledWith('record-1');
     expect(appService.stopVideo).toHaveBeenCalledWith('record-1');
     expect(appService.completeRecord).toHaveBeenCalledWith('record-1');
+  });
+
+  it('delegates user record listing to the service', async () => {
+    await expect(controller.listRecordsForUser('user-1')).resolves.toEqual(
+      listRecordsResponse,
+    );
+
+    expect(appService.listRecordsForUser).toHaveBeenCalledWith('user-1');
   });
 
   it('delegates browser input to the service', async () => {

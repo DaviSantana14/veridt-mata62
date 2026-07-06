@@ -10,6 +10,7 @@ import type {
   CreateCardPaymentResponse,
   CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
+  ListCaptureRecordsResponse,
   NavigateCaptureRequest,
   NavigateCaptureResponse,
   SimulatePaymentResponse,
@@ -116,6 +117,16 @@ export function getCaptureFrame(recordId: string) {
 export function getCaptureRecord(recordId: string) {
   return requestGateway<CaptureRecordDetailsResponse>(
     `/capture/records/${recordId}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    },
+  );
+}
+
+export function listCaptureRecords(userId: string) {
+  return requestGateway<ListCaptureRecordsResponse>(
+    `/capture/users/${userId}/records`,
     {
       method: "GET",
       cache: "no-store",

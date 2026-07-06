@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   CheckCircle2,
   Clock3,
-  CreditCard,
   FileText,
   Plus,
   Search,
@@ -35,7 +34,12 @@ import { useUserCreditBalance } from "@/components/veridit/credit-balance";
 import { MetricPanel } from "@/components/veridit/metric-panel";
 import { StatusPill } from "@/components/veridit/status-pill";
 import { getAuthSession } from "@/lib/auth-session";
-import { currentUser, records } from "@/lib/mock-data";
+import {
+  toCaptureRecordView,
+  type CaptureRecordView,
+} from "@/lib/capture-record-view";
+import { listCaptureRecords } from "@/lib/gateway";
+import { currentUser } from "@/lib/mock-data";
 
 function getFirstName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] || currentUser.firstName;
@@ -50,6 +54,9 @@ function getTimeGreeting() {
 
 export function DashboardClient() {
   const [query, setQuery] = useState("");
+  const [records, setRecords] = useState<CaptureRecordView[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(true);
+  const [recordsError, setRecordsError] = useState<string | null>(null);
   const { credits, loading: creditsLoading } = useUserCreditBalance();
   const [firstName] = useState(() => {
     const session = getAuthSession();
@@ -60,12 +67,52 @@ export function DashboardClient() {
   });
   const normalized = query.trim().toLowerCase();
   const completed = records.filter(
-    (record) => record.status === "completed",
+    (record) => record.status === "COMPLETED",
   ).length;
   const inProgress = records.filter(
-    (record) => record.status === "progress",
+    (record) => record.status === "STARTED",
   ).length;
   const creditValue = creditsLoading && credits === null ? null : (credits ?? 0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRecords() {
+      const session = getAuthSession();
+
+      if (!session) {
+        setRecords([]);
+        setRecordsLoading(false);
+        setRecordsError("Sessão expirada. Faça login novamente.");
+        return;
+      }
+
+      setRecordsLoading(true);
+      setRecordsError(null);
+
+      const result = await listCaptureRecords(session.user.id);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (!result.ok) {
+        setRecords([]);
+        setRecordsError(result.message);
+        setRecordsLoading(false);
+        return;
+      }
+
+      setRecords(result.data.records.map(toCaptureRecordView));
+      setRecordsLoading(false);
+    }
+
+    void loadRecords();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredRecords = useMemo(() => {
     if (!normalized) {
@@ -73,12 +120,9 @@ export function DashboardClient() {
     }
 
     return records.filter((record) =>
-      [record.title, record.url, record.status, record.createdAt, record.hash]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalized),
+      record.searchableText.toLowerCase().includes(normalized),
     );
-  }, [normalized]);
+  }, [normalized, records]);
 
   return (
     <div className="grid gap-7">
@@ -182,7 +226,7 @@ export function DashboardClient() {
             <div>
               <CardTitle>Registros de evidência</CardTitle>
               <CardDescription>
-                Pesquise por título, URL, status, data ou hash.
+                Pesquise por título, URL, status, data ou detalhes.
               </CardDescription>
             </div>
             <div className="relative">
@@ -206,9 +250,10 @@ export function DashboardClient() {
                   <TableRow>
                     <TableHead>Registro</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead className="text-right">Ação</TableHead>
+                    <TableHead>Dados</TableHead>
+                    <TableHead>Início</TableHead>
+                    <TableHead>Fim</TableHead>
+                    <TableHead className="text-right">Detalhes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -221,20 +266,21 @@ export function DashboardClient() {
                         <div className="min-w-0">
                           <p className="truncate font-medium">{record.title}</p>
                           <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {record.url}
+                            {record.siteUrl}
                           </p>
                         </div>
                       </TableCell>
                       <TableCell>
                         <StatusPill status={record.status} />
                       </TableCell>
-                      <TableCell>
-                        {record.kind === "video" ? "Vídeo" : "Screenshot"}
-                      </TableCell>
-                      <TableCell>{record.createdAt}</TableCell>
+                      <TableCell>{record.dataTypeLabel}</TableCell>
+                      <TableCell>{record.startedAtLabel}</TableCell>
+                      <TableCell>{record.finishedAtLabel}</TableCell>
                       <TableCell className="text-right">
                         <Button asChild variant="ghost" size="sm">
-                          <Link href={`/registros/${record.id}`}>Abrir</Link>
+                          <Link href={record.actionHref}>
+                            {record.actionLabel}
+                          </Link>
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -249,9 +295,24 @@ export function DashboardClient() {
               ))}
             </div>
 
-            {filteredRecords.length === 0 ? (
+            {recordsLoading ? (
               <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                Nenhum registro encontrado para a busca.
+                Carregando registros...
+              </div>
+            ) : null}
+
+            {recordsError ? (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-8 text-center text-sm text-destructive">
+                <p className="font-medium">Não foi possível carregar os registros.</p>
+                <p className="mt-1">{recordsError}</p>
+              </div>
+            ) : null}
+
+            {!recordsLoading && !recordsError && filteredRecords.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                {normalized
+                  ? "Nenhum registro encontrado para a busca."
+                  : "Nenhum registro realizado ainda."}
               </div>
             ) : null}
           </CardContent>

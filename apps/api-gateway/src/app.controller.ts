@@ -27,6 +27,7 @@ import type {
   CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
   HealthResponse,
+  ListCaptureRecordsResponse,
   NavigateCaptureRequest,
   NavigateCaptureResponse,
   PurchaseCreditsRequest,
@@ -220,6 +221,13 @@ export class AppController {
     @Param('recordId') recordId: string,
   ): Promise<CaptureRecordDetailsResponse> {
     return this.appService.getCaptureRecord(recordId);
+  }
+
+  @Get('capture/users/:userId/records')
+  listCaptureRecords(
+    @Param('userId') userId: string,
+  ): Promise<ListCaptureRecordsResponse> {
+    return this.appService.listCaptureRecords(userId);
   }
 
   @Get('capture/records/:recordId/frame')

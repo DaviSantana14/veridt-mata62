@@ -50,11 +50,24 @@ import { cn } from "@/lib/utils";
 const FRAME_REFRESH_MS = 850;
 const POLLING_PAUSE_STATUSES = new Set([404, 409, 500, 502]);
 
+function getFrameErrorMessage(status?: number, fallback?: string) {
+  if (status === 409) {
+    return "A sessão de navegação deste registro expirou.";
+  }
+
+  if (status === 404) {
+    return "Este registro não foi encontrado ou não está mais em andamento.";
+  }
+
+  return fallback ?? "Não foi possível carregar a sessão de captura.";
+}
+
 export function CaptureBrowserClient({ recordId }: { recordId: string }) {
   const router = useRouter();
   const [frame, setFrame] = useState<CaptureFrameResponse | null>(null);
   const [loadingFrame, setLoadingFrame] = useState(true);
   const [frameError, setFrameError] = useState<string | null>(null);
+  const [frameErrorStatus, setFrameErrorStatus] = useState<number | null>(null);
   const [recording, setRecording] = useState(false);
   const [pollingPaused, setPollingPaused] = useState(false);
   const [consecutiveFrameErrors, setConsecutiveFrameErrors] = useState(0);
@@ -71,6 +84,7 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
     setPollingPaused(false);
     setConsecutiveFrameErrors(0);
     setFrameError(null);
+    setFrameErrorStatus(null);
   }, []);
 
   const refreshFrame = useCallback(
@@ -92,7 +106,8 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
 
       if (!result.ok) {
         setConsecutiveFrameErrors((current) => current + 1);
-        setFrameError(result.message);
+        setFrameError(getFrameErrorMessage(result.status, result.message));
+        setFrameErrorStatus(result.status ?? null);
 
         if (
           result.status === undefined ||
@@ -111,6 +126,7 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
         setAddressValue(result.data.currentUrl);
       }
       setFrameError(null);
+      setFrameErrorStatus(null);
     },
     [addressDirty, recordId],
   );
@@ -350,6 +366,7 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
     });
     setPollingPaused(true);
     setFrameError(null);
+    setFrameErrorStatus(null);
     router.push(`/captura/concluida?recordId=${encodeURIComponent(recordId)}`);
   }
 
@@ -415,7 +432,13 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
               <AlertTitle>Sessão indisponível</AlertTitle>
               <AlertDescription>
                 {frameError}
-                {pollingPaused ? (
+                {frameErrorStatus === 409 ? (
+                  <>
+                    {" "}
+                    Você ainda pode finalizar o registro com as evidências já
+                    salvas.
+                  </>
+                ) : pollingPaused ? (
                   <>
                     {" "}
                     A atualização automática foi pausada após{" "}
@@ -502,7 +525,7 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
         </ToolbarButton>
         <ToolbarButton
           label="Finalizar registro"
-          disabled={actionPending !== null || sessionUnavailable}
+          disabled={actionPending !== null}
           onClick={onComplete}
         >
           {actionPending === "complete" ? (
