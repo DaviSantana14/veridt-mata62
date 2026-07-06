@@ -1,4 +1,6 @@
 import { BadGatewayException, HttpException, Injectable } from '@nestjs/common';
+import { Readable } from 'node:stream';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import {
   SERVICE_PORTS,
   type AuthResponse,
@@ -18,6 +20,7 @@ import {
   type CreateEmbeddedCreditPurchaseResponse,
   type CreditPackageResponse,
   type HealthResponse,
+  type ListCaptureAssetsResponse,
   type ListCaptureRecordsResponse,
   type LoginUserRequest,
   type NavigateCaptureRequest,
@@ -38,6 +41,13 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 
 export interface GatewayHealthResponse extends HealthResponse {
   downstream: Record<string, string>;
+}
+
+export interface GatewayBinaryResponse {
+  stream: Readable;
+  contentType: string;
+  contentDisposition?: string;
+  contentLength?: string;
 }
 
 @Injectable()
@@ -321,6 +331,30 @@ export class AppService {
     );
   }
 
+  listCaptureAssets(recordId: string): Promise<ListCaptureAssetsResponse> {
+    return this.getFromService(
+      'capture-service',
+      this.urls.capture,
+      `/records/${recordId}/assets`,
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
+  downloadCaptureAsset(
+    recordId: string,
+    assetId: string,
+  ): Promise<GatewayBinaryResponse> {
+    return this.requestBinary(
+      'capture-service',
+      `${this.urls.capture}/records/${recordId}/assets/${assetId}/download`,
+      {
+        preserveClientErrors: true,
+      },
+    );
+  }
+
   getCaptureFrame(recordId: string): Promise<CaptureFrameResponse> {
     return this.getFromService(
       'capture-service',
@@ -507,6 +541,72 @@ export class AppService {
         message,
       });
     }
+  }
+
+  private async requestBinary(
+    service: ServiceName,
+    url: string,
+    options: { preserveClientErrors?: boolean } = {},
+  ): Promise<GatewayBinaryResponse> {
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const payload = await this.parseErrorPayload(response);
+
+        if (
+          options.preserveClientErrors &&
+          response.status >= 400 &&
+          response.status < 500
+        ) {
+          throw new HttpException(
+            this.toHttpExceptionResponse(payload),
+            response.status,
+          );
+        }
+
+        throw new BadGatewayException({
+          service,
+          statusCode: response.status,
+          payload,
+        });
+      }
+
+      if (!response.body) {
+        throw new Error('Binary response body is empty');
+      }
+
+      return {
+        stream: Readable.fromWeb(
+          response.body as unknown as NodeReadableStream,
+        ),
+        contentType:
+          response.headers.get('content-type') ?? 'application/octet-stream',
+        contentDisposition:
+          response.headers.get('content-disposition') ?? undefined,
+        contentLength: response.headers.get('content-length') ?? undefined,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadGatewayException({
+        service,
+        message,
+      });
+    }
+  }
+
+  private async parseErrorPayload(response: Response): Promise<unknown> {
+    const contentType = response.headers.get('content-type') ?? '';
+
+    if (contentType.includes('application/json')) {
+      return response.json();
+    }
+
+    return response.text();
   }
 
   private toHttpExceptionResponse(

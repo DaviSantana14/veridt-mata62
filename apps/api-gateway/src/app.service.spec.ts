@@ -1,4 +1,5 @@
 import { BadGatewayException, HttpException } from '@nestjs/common';
+import { Readable } from 'node:stream';
 import type {
   BrowserInputRequest,
   CaptureAssetResponse,
@@ -11,6 +12,7 @@ import type {
   CreateCreditPurchaseRequest,
   CreateCreditPurchaseResponse,
   CreateEmbeddedCreditPurchaseResponse,
+  ListCaptureAssetsResponse,
   ListCaptureRecordsResponse,
   SimulatePaymentResponse,
   StartCaptureRequest,
@@ -115,6 +117,21 @@ const listCaptureRecordsResponse: ListCaptureRecordsResponse = {
   ],
 };
 
+const listCaptureAssetsResponse: ListCaptureAssetsResponse = {
+  recordId: 'record-1',
+  assets: [
+    {
+      id: 'asset-1',
+      recordId: 'record-1',
+      type: 'IMAGE',
+      fileName: 'screenshot.png',
+      fileSizeBytes: 1200,
+      sourceUrl: 'https://example.com',
+      createdAt: '2026-07-05T12:01:00.000Z',
+    },
+  ],
+};
+
 const captureFrameResponse: CaptureFrameResponse = {
   recordId: 'record-1',
   mimeType: 'image/jpeg',
@@ -173,6 +190,17 @@ function fetchResponse(status: number, payload: unknown): Response {
     status,
     json: jest.fn().mockResolvedValue(payload),
   } as unknown as Response;
+}
+
+function binaryFetchResponse(
+  status: number,
+  body: BodyInit | null,
+  headers: Record<string, string> = {},
+): Response {
+  return new Response(body, {
+    status,
+    headers,
+  });
 }
 
 async function expectHttpException(
@@ -501,6 +529,80 @@ describe('Api Gateway AppService capture records', () => {
       undefined,
     );
     expect(result).toEqual(listCaptureRecordsResponse);
+  });
+
+  it('lists capture assets through capture-service', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(200, listCaptureAssetsResponse));
+
+    const result = await service.listCaptureAssets('record-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3103/records/record-1/assets',
+      undefined,
+    );
+    expect(result).toEqual(listCaptureAssetsResponse);
+  });
+
+  it('downloads capture assets through capture-service without parsing JSON', async () => {
+    fetchMock.mockResolvedValue(
+      binaryFetchResponse(200, 'asset-bytes', {
+        'content-type': 'image/png',
+        'content-disposition':
+          'attachment; filename="screenshot.png"; filename*=UTF-8\'\'screenshot.png',
+        'content-length': '11',
+      }),
+    );
+
+    const result = await service.downloadCaptureAsset('record-1', 'asset-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3103/records/record-1/assets/asset-1/download',
+    );
+    expect(result.stream).toBeInstanceOf(Readable);
+    expect(result.contentType).toBe('image/png');
+    expect(result.contentDisposition).toBe(
+      'attachment; filename="screenshot.png"; filename*=UTF-8\'\'screenshot.png',
+    );
+    expect(result.contentLength).toBe('11');
+  });
+
+  it('preserves capture-service client errors during asset downloads', async () => {
+    const payload = {
+      statusCode: 404,
+      message: 'Arquivo de captura nao encontrado',
+    };
+
+    fetchMock.mockResolvedValue(
+      binaryFetchResponse(404, JSON.stringify(payload), {
+        'content-type': 'application/json',
+      }),
+    );
+
+    await expectHttpException(
+      service.downloadCaptureAsset('record-1', 'missing-asset'),
+      404,
+      payload,
+    );
+  });
+
+  it('wraps capture asset download network errors as bad gateway', async () => {
+    fetchMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+    await expect(
+      service.downloadCaptureAsset('record-1', 'asset-1'),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+  });
+
+  it('wraps capture-service 5xx asset download responses as bad gateway', async () => {
+    fetchMock.mockResolvedValue(
+      binaryFetchResponse(503, 'Capture unavailable', {
+        'content-type': 'text/plain',
+      }),
+    );
+
+    await expect(
+      service.downloadCaptureAsset('record-1', 'asset-1'),
+    ).rejects.toBeInstanceOf(BadGatewayException);
   });
 
   it('sends browser input through capture-service', async () => {
