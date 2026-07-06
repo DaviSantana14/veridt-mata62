@@ -1,598 +1,819 @@
-# Mercado Pago Sandbox Implementation Plan
+# Registro de Conteudo Navegavel Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fechar o fluxo de compra real em sandbox com Mercado Pago: o usuário cria uma preferência pelo frontend, é redirecionado ao checkout sandbox, retorna para o app, e o pagamento aprovado credita saldo via webhook.
+**Goal:** Implementar o REQ 08 com uma sessao de captura navegavel: o usuario informa uma URL, o sistema abre essa URL em um navegador remoto controlado pelo `capture-service`, e a tela do Veridit permite navegar, gravar video e tirar prints do conteudo.
 
-**Architecture:** O frontend continua consumindo somente o API Gateway. O API Gateway encaminha criação de compra e webhook para o billing-service. O billing-service continua dono da regra de créditos, do banco, da criação de preferência no Mercado Pago e do processamento idempotente de webhooks.
+**Architecture:** O frontend continua falando somente com o API Gateway, como definido em `docs/03-arquitetura.md`. O `capture-service` passa a ser dono das sessoes Playwright, dos arquivos gerados e dos registros `ContentRecord`/`CaptureAsset`; o API Gateway apenas faz proxy HTTP. A primeira versao usa polling de frames em base64 e eventos de input por HTTP para manter a implementacao simples, sem iframe e sem WebSocket.
 
-**Tech Stack:** Next.js App Router, NestJS, Prisma, PostgreSQL, Mercado Pago Node.js SDK (`mercadopago`), Jest, npm workspaces.
-
----
-
-## Referências Técnicas Confirmadas
-
-- O SDK oficial `mercadopago` cria preferências com `Preference.create({ body, requestOptions })`.
-- `body.back_urls` aceita `success`, `pending` e `failure`.
-- `body.notification_url` deve apontar para uma URL HTTPS acessível pelo Mercado Pago.
-- `body.external_reference` deve carregar o `purchaseId` interno para reconciliar pagamento com compra.
-- `requestOptions.idempotencyKey` é suportado na criação da preferência.
-- O pagamento pode ser consultado pelo SDK com `Payment.get({ id })`.
-- A validação de webhook usa headers `x-signature` e `x-request-id`; o manifesto da assinatura é `id:{data.id};request-id:{x-request-id};ts:{ts};`.
-
-## Estado Atual do Código
-
-- `apps/billing-service` já cria compras pendentes, cria preferência no Mercado Pago, persiste `providerPreferenceId` e `checkoutUrl`, consulta pagamentos por webhook e credita saldo uma única vez.
-- `apps/api-gateway` já expõe `POST /billing/purchases`, mas ainda não expõe proxy para `POST /billing/payments/mercado-pago/webhook`.
-- `apps/web` ainda usa `createMockPurchase()` e chama `/billing/purchases/mock` na tela de pagamento.
-- `apps/web` usa planos `initial`, `professional`, `enterprise`; o backend aceita `basic`, `medium`, `premium`.
-- `apps/billing-service/.env.example` possui variáveis do Mercado Pago, mas os redirects default apontam para rotas que não existem.
-- A suíte do `api-gateway` está bloqueada por divergência de TypeScript: build resolve TypeScript 6 no workspace, Jest resolve TypeScript 5.9 na raiz e rejeita `ignoreDeprecations: "6.0"`.
-
-## Estrutura de Arquivos
-
-- Modify: `apps/api-gateway/package.json`  
-  Alinhar TypeScript do gateway com a raiz para estabilizar build e Jest.
-
-- Modify: `apps/api-gateway/tsconfig.json`  
-  Remover configuração aceita só por TypeScript 6 se o gateway voltar a usar TypeScript 5.9.
-
-- Modify: `package-lock.json`  
-  Refletir alterações de dependência/configuração.
-
-- Modify: `apps/api-gateway/src/app.controller.ts`  
-  Adicionar endpoint público de webhook do Mercado Pago sob o namespace do billing.
-
-- Modify: `apps/api-gateway/src/app.service.ts`  
-  Encaminhar payload, query e headers relevantes do webhook para o billing-service.
-
-- Modify: `apps/api-gateway/src/app.controller.spec.ts`  
-  Cobrir rejeição/encaminhamento do webhook pelo controller.
-
-- Modify: `apps/api-gateway/src/app.service.spec.ts`  
-  Cobrir proxy do webhook para `billing-service`.
-
-- Modify: `apps/billing-service/src/payments/mercado-pago-payment.provider.ts`  
-  Tornar sandbox explícito, preferir `sandbox_init_point` quando o ambiente for sandbox, e centralizar URLs de retorno.
-
-- Create: `apps/billing-service/src/payments/mercado-pago-webhook-signature.ts`  
-  Validar assinatura HMAC do webhook quando `MERCADO_PAGO_WEBHOOK_SECRET` estiver configurado.
-
-- Modify: `apps/billing-service/src/app.controller.ts`  
-  Ler headers `x-signature` e `x-request-id` e repassar ao service.
-
-- Modify: `apps/billing-service/src/app.service.ts`  
-  Validar assinatura antes de consultar o pagamento, mantendo comportamento idempotente.
-
-- Modify: `apps/billing-service/src/app.service.spec.ts`  
-  Cobrir webhooks válidos, assinatura ausente quando segredo está configurado, assinatura inválida e ausência de segredo em sandbox local.
-
-- Modify: `apps/billing-service/.env.example`  
-  Documentar ambiente sandbox, segredo de webhook e URLs finais.
-
-- Modify: `apps/web/src/lib/gateway.ts`  
-  Adicionar client para `POST /billing/purchases` com `Idempotency-Key`.
-
-- Modify: `apps/web/src/lib/mock-data.ts`  
-  Mapear cada plano visual para o pacote do backend.
-
-- Modify: `apps/web/src/components/veridit/payment-client.tsx`  
-  Trocar a ação da aba Mercado Pago para criar preferência real e redirecionar ao checkout sandbox.
-
-- Create: `apps/web/src/app/pagamento/retorno/page.tsx`  
-  Mostrar retorno de sucesso, pendência ou falha após o checkout.
-
-- Modify: `apps/web/src/app/creditos/page.tsx`  
-  Ajustar copy para indicar checkout sandbox real via Mercado Pago.
-
-- Modify: `docs/02-como-rodar.md`  
-  Documentar configuração sandbox, tunnel HTTPS e teste manual.
-
-- Modify: `docs/04-servicos.md`  
-  Atualizar rotas e responsabilidade do billing.
+**Tech Stack:** Next.js 16 App Router, React 19, NestJS 11, Prisma, Playwright Chromium, PostgreSQL, RabbitMQ existente para `capture.completed`.
 
 ---
 
-## Task 1: Estabilizar Tooling do API Gateway
+## Contexto Confirmado
+
+- O PDF define `Registro de conteúdo` com `Endereço do site` e `título do registro do conteúdo`.
+- O fluxo desejado pelo usuario e:
+  - clicar em `Nova Captura`;
+  - informar o link;
+  - abrir uma tela de captura;
+  - renderizar o site dentro de um container navegavel;
+  - navegar no conteudo;
+  - usar botoes laterais para gravar video e tirar print do container.
+- Nao usar `iframe` como solucao principal. Sites externos podem bloquear embedding com `X-Frame-Options` ou `CSP frame-ancestors`, e o browser bloqueia captura confiavel de conteudo cross-origin.
+- Usar navegador remoto com Playwright no backend. O container do frontend mostra frames desse navegador remoto e envia input do usuario de volta ao backend.
+- Esta versao nao desconta credito. O repo ainda nao tem endpoint de consumo de credito por captura; o REQ 08 deve iniciar e operar a captura. Consumo de credito pode ser integrado quando existir regra no billing.
+- Esta versao nao gera relatorio real nem ZIP. Ela grava `CaptureAsset` e publica `capture.completed` ao concluir, mantendo o caminho para REQ 10, REQ 14 e REQ 15.
+
+## Decisao De Transporte
+
+Usar HTTP polling no primeiro corte:
+
+- `GET /capture/records/:recordId/frame` retorna o frame atual como JSON com base64.
+- `POST /capture/records/:recordId/input` envia clique, scroll, tecla ou texto colado.
+- O frontend atualiza o frame a cada 500 ms enquanto a sessao esta ativa e tambem apos cada input.
+
+Motivo: e mais simples, usa o gateway HTTP existente, evita WebSocket, e respeita a regra "frontend chama apenas o API Gateway". Se a UX ficar lenta, a mesma modelagem de sessao permite trocar o transporte de frames por WebSocket em uma evolucao separada, sem mudar a persistencia principal.
+
+## Rotas Alvo
+
+Todas as rotas abaixo devem existir no API Gateway e ser encaminhadas para o `capture-service`.
+
+```text
+POST /capture/records
+GET  /capture/records/:recordId
+GET  /capture/records/:recordId/frame
+POST /capture/records/:recordId/input
+POST /capture/records/:recordId/screenshots
+POST /capture/records/:recordId/video/start
+POST /capture/records/:recordId/video/stop
+POST /capture/records/:recordId/complete
+```
+
+## Estrutura De Arquivos
+
+### Shared contracts
+
+- Modify: `packages/contracts/src/index.ts`
+  - Adicionar tipos de status, assets, frame, input e respostas das novas rotas.
+  - Manter `StartCaptureRequest` compativel com o que ja existe.
+
+### Capture service
+
+- Modify: `apps/capture-service/package.json`
+  - Adicionar `test`.
+  - Adicionar dependencia `playwright`.
+- Modify: `apps/capture-service/.env.example`
+  - Adicionar configuracoes de storage, viewport e TTL.
+- Modify: `.gitignore`
+  - Ignorar arquivos locais de captura.
+- Create: `apps/capture-service/src/dto/start-capture.dto.ts`
+  - DTO real para `POST /records`.
+- Create: `apps/capture-service/src/dto/browser-input.dto.ts`
+  - DTO para input do container remoto.
+- Create: `apps/capture-service/src/capture/url-policy.service.ts`
+  - Validacao SSRF-safe para URLs informadas pelo usuario.
+- Create: `apps/capture-service/src/capture/capture-storage.service.ts`
+  - Criacao de diretorios e leitura de tamanho dos arquivos.
+- Create: `apps/capture-service/src/capture/playwright-browser.service.ts`
+  - Adapter fino sobre Playwright.
+- Create: `apps/capture-service/src/capture/capture-session-manager.service.ts`
+  - Gerencia sessoes em memoria, frames, input, screenshot, video e encerramento.
+- Modify: `apps/capture-service/src/app.service.ts`
+  - Delegar fluxo real de captura para os novos services.
+- Modify: `apps/capture-service/src/app.controller.ts`
+  - Expor rotas reais de captura.
+- Modify: `apps/capture-service/src/app.module.ts`
+  - Registrar novos providers.
+- Test: `apps/capture-service/src/capture/url-policy.service.spec.ts`
+- Test: `apps/capture-service/src/capture/capture-session-manager.service.spec.ts`
+- Test: `apps/capture-service/src/app.controller.spec.ts`
+- Test: `apps/capture-service/src/app.service.spec.ts`
+
+### API Gateway
+
+- Modify: `apps/api-gateway/src/app.controller.ts`
+  - Expor as novas rotas `/capture/records...`.
+- Modify: `apps/api-gateway/src/app.service.ts`
+  - Fazer proxy para o `capture-service`.
+- Test: `apps/api-gateway/src/app.controller.spec.ts`
+- Test: `apps/api-gateway/src/app.service.spec.ts`
+
+### Web
+
+- Modify: `apps/web/src/lib/gateway.ts`
+  - Adicionar client functions das novas rotas.
+- Modify: `apps/web/src/app/captura/page.tsx`
+  - Manter como tela de entrada da URL.
+- Modify: `apps/web/src/components/veridit/capture-client.tsx`
+  - Simplificar formulario para URL e titulo gerado/editavel.
+- Create: `apps/web/src/app/captura/[recordId]/page.tsx`
+  - Pagina da sessao navegavel.
+- Create: `apps/web/src/components/veridit/capture-workspace-client.tsx`
+  - Container remoto, polling de frames, input e botoes laterais.
+- Modify: `apps/web/src/app/captura/concluida/page.tsx`
+  - Aceitar `recordId` via query string e mostrar retorno coerente.
+- Optional Test: `apps/web/test/gateway-architecture.spec.mjs`
+  - Garantir que o web continua chamando apenas `NEXT_PUBLIC_API_GATEWAY_URL`.
+
+---
+
+## Task 1: Shared Contracts
 
 **Files:**
-- Modify: `apps/api-gateway/package.json`
-- Modify: `apps/api-gateway/tsconfig.json`
-- Modify: `package-lock.json`
+- Modify: `packages/contracts/src/index.ts`
 
-- [ ] **Step 1: Reproduzir a falha atual do Jest**
+- [ ] **Step 1: Definir os contratos de captura**
+
+Adicionar tipos pequenos e explicitos. Manter nomes em ingles porque o pacote atual ja usa ingles.
+
+```ts
+export type CaptureRecordStatus = "STARTED" | "COMPLETED" | "FAILED";
+export type CaptureAssetType = "IMAGE" | "VIDEO";
+
+export interface CaptureViewport {
+  width: number;
+  height: number;
+}
+
+export interface StartCaptureSessionResponse extends ContentRecordResponse {
+  status: CaptureRecordStatus;
+  viewport: CaptureViewport;
+}
+
+export interface CaptureFrameResponse {
+  recordId: string;
+  mimeType: "image/jpeg";
+  imageBase64: string;
+  currentUrl: string;
+  capturedAt: string;
+  viewport: CaptureViewport;
+}
+
+export interface CaptureAssetResponse {
+  id: string;
+  recordId: string;
+  type: CaptureAssetType;
+  fileName: string;
+  fileSizeBytes?: number;
+  sourceUrl?: string;
+  createdAt: string;
+}
+```
+
+- [ ] **Step 2: Definir o contrato de input remoto**
+
+Usar uma union discriminada para evitar payloads ambiguos.
+
+```ts
+export type BrowserInputRequest =
+  | { type: "click"; x: number; y: number }
+  | { type: "wheel"; deltaX: number; deltaY: number }
+  | { type: "key"; key: string; code?: string; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean }
+  | { type: "text"; value: string };
+
+export interface BrowserInputResponse {
+  accepted: true;
+  currentUrl: string;
+}
+
+export interface CaptureVideoStateResponse {
+  recording: boolean;
+  asset?: CaptureAssetResponse;
+}
+
+export interface CompleteCaptureResponse extends ContentRecordResponse {
+  status: "COMPLETED";
+  imageCount: number;
+  videoCount: number;
+}
+```
+
+- [ ] **Step 3: Ajustar `ContentRecordResponse`**
+
+Trocar o status atual:
+
+```ts
+status: "STARTED" | "COMPLETED";
+```
+
+por:
+
+```ts
+status: CaptureRecordStatus;
+```
+
+- [ ] **Step 4: Build dos contratos**
 
 Run:
 
 ```bash
-npm --workspace @veridit/api-gateway test -- --runInBand
+npm --workspace @veridit/contracts run build
 ```
 
-Expected: FAIL com `TS5103: Invalid value for '--ignoreDeprecations'`.
+Expected:
 
-- [ ] **Step 2: Alinhar TypeScript do gateway com a raiz**
-
-Alterar `apps/api-gateway/package.json`:
-
-```json
-"typescript": "5.9.2"
+```text
+> @veridit/contracts@0.0.0 build
 ```
 
-Remover de `apps/api-gateway/tsconfig.json`:
-
-```json
-"ignoreDeprecations": "6.0"
-```
-
-Racional: a raiz já usa TypeScript 5.9.2, e `ts-jest` está resolvendo essa versão durante testes.
-
-- [ ] **Step 3: Atualizar lockfile**
-
-Run:
-
-```bash
-npm install --package-lock-only --ignore-scripts --no-audit --fund=false
-```
-
-Expected: `package-lock.json` atualizado sem reinstalar scripts.
-
-- [ ] **Step 4: Verificar build e testes do gateway**
-
-Run:
-
-```bash
-npm --workspace @veridit/api-gateway run build
-npm --workspace @veridit/api-gateway test -- --runInBand
-```
-
-Expected: ambos exit code 0.
+e comando finaliza com exit code `0`.
 
 - [ ] **Step 5: Commit**
 
-Run:
-
 ```bash
-git add apps/api-gateway/package.json apps/api-gateway/tsconfig.json package-lock.json
-git commit -m "chore: align api gateway typescript tooling"
+git add packages/contracts/src/index.ts
+git commit -m "feat: add capture session contracts"
 ```
 
 ---
 
-## Task 2: Expor Webhook do Mercado Pago Pelo API Gateway
+## Task 2: Capture Service Setup
 
 **Files:**
-- Modify: `apps/api-gateway/src/app.controller.ts`
-- Modify: `apps/api-gateway/src/app.service.ts`
-- Modify: `apps/api-gateway/src/app.controller.spec.ts`
-- Modify: `apps/api-gateway/src/app.service.spec.ts`
+- Modify: `apps/capture-service/package.json`
+- Modify: `apps/capture-service/.env.example`
+- Modify: `.gitignore`
 
-- [ ] **Step 1: Escrever teste de controller para webhook**
+- [ ] **Step 1: Adicionar dependencia Playwright e script de teste**
 
-Adicionar caso em `apps/api-gateway/src/app.controller.spec.ts`:
+Em `apps/capture-service/package.json`:
 
-```ts
-it('forwards Mercado Pago webhook payloads', async () => {
-  await controller.handleMercadoPagoWebhook(
-    { type: 'payment', data: { id: 'payment-1' } },
-    { 'x-request-id': 'request-1' },
-    {},
-  );
-});
+```json
+"test": "jest"
 ```
 
-Expected behavior: o controller chama `appService.handleMercadoPagoWebhook(...)` com `body`, `headers` e `query`.
+Adicionar em `dependencies`:
 
-- [ ] **Step 2: Escrever teste de service para proxy**
-
-Adicionar caso em `apps/api-gateway/src/app.service.spec.ts`:
-
-```ts
-await service.handleMercadoPagoWebhook(
-  { type: 'payment', data: { id: 'payment-1' } },
-  { 'x-request-id': 'request-1' },
-  {},
-);
+```json
+"playwright": "^1.61.0"
 ```
 
-Expected fetch:
-
-```text
-POST http://localhost:3102/payments/mercado-pago/webhook
-```
-
-Headers esperados:
-
-```text
-content-type: application/json
-x-request-id: request-1
-```
-
-- [ ] **Step 3: Rodar testes e confirmar falha**
+- [ ] **Step 2: Instalar dependencia**
 
 Run:
 
 ```bash
-npm --workspace @veridit/api-gateway test -- --runInBand
+npm install --workspace @veridit/capture-service
 ```
 
-Expected: FAIL porque `handleMercadoPagoWebhook` ainda não existe.
-
-- [ ] **Step 4: Implementar controller**
-
-Adicionar em `apps/api-gateway/src/app.controller.ts`:
-
-```ts
-@Post('billing/payments/mercado-pago/webhook')
-handleMercadoPagoWebhook(...) {
-  return this.appService.handleMercadoPagoWebhook(body, headers, query);
-}
-```
-
-Usar `@Body()`, `@Headers()` e `@Query()` para preservar os dados enviados pelo Mercado Pago.
-
-- [ ] **Step 5: Implementar service**
-
-Adicionar em `apps/api-gateway/src/app.service.ts`:
-
-```ts
-handleMercadoPagoWebhook(body, headers, query) {
-  return this.postToService('billing-service', this.urls.billing, '/payments/mercado-pago/webhook', mergedPayload, filteredHeaders);
-}
-```
-
-Filtrar e repassar apenas estes headers externos:
+Expected:
 
 ```text
-x-signature
-x-request-id
+added
 ```
 
-- [ ] **Step 6: Rodar testes do gateway**
+ou:
+
+```text
+up to date
+```
+
+e `package-lock.json` atualizado quando necessario.
+
+- [ ] **Step 3: Instalar navegador Chromium do Playwright**
 
 Run:
 
 ```bash
-npm --workspace @veridit/api-gateway test -- --runInBand
-npm --workspace @veridit/api-gateway run build
+npm --workspace @veridit/capture-service exec playwright install chromium
 ```
 
-Expected: exit code 0.
+Expected:
+
+```text
+Chromium
+```
+
+e comando finaliza com exit code `0`.
+
+- [ ] **Step 4: Adicionar variaveis de ambiente**
+
+Em `apps/capture-service/.env.example`, adicionar:
+
+```text
+CAPTURE_STORAGE_DIR=storage/captures
+CAPTURE_VIEWPORT_WIDTH=1366
+CAPTURE_VIEWPORT_HEIGHT=768
+CAPTURE_FRAME_QUALITY=72
+CAPTURE_IDLE_TTL_MS=900000
+CAPTURE_ALLOW_PRIVATE_HOSTS=false
+```
+
+- [ ] **Step 5: Ignorar arquivos gerados**
+
+Em `.gitignore`, adicionar:
+
+```text
+apps/capture-service/storage/
+```
+
+- [ ] **Step 6: Validar instalacao**
+
+Run:
+
+```bash
+npm --workspace @veridit/capture-service run build
+```
+
+Expected:
+
+```text
+> @veridit/capture-service@0.0.1 build
+```
+
+e comando finaliza com exit code `0`.
 
 - [ ] **Step 7: Commit**
 
-Run:
-
 ```bash
-git add apps/api-gateway/src/app.controller.ts apps/api-gateway/src/app.service.ts apps/api-gateway/src/app.controller.spec.ts apps/api-gateway/src/app.service.spec.ts
-git commit -m "feat: proxy mercado pago webhook through gateway"
+git add package.json package-lock.json apps/capture-service/package.json apps/capture-service/.env.example .gitignore
+git commit -m "chore: prepare capture service for playwright"
 ```
 
 ---
 
-## Task 3: Fechar Comportamento Sandbox no Billing Provider
+## Task 3: URL Policy
 
 **Files:**
-- Modify: `apps/billing-service/src/payments/mercado-pago-payment.provider.ts`
-- Create: `apps/billing-service/src/payments/mercado-pago-payment.provider.spec.ts`
-- Modify: `apps/billing-service/.env.example`
+- Create: `apps/capture-service/src/capture/url-policy.service.ts`
+- Test: `apps/capture-service/src/capture/url-policy.service.spec.ts`
+- Modify: `apps/capture-service/src/app.module.ts`
 
-- [ ] **Step 1: Escrever testes do provider**
+- [ ] **Step 1: Escrever teste de URLs permitidas**
 
-Criar `apps/billing-service/src/payments/mercado-pago-payment.provider.spec.ts` cobrindo:
-
-- sandbox usa `sandbox_init_point`;
-- production usa `init_point`;
-- preference recebe `external_reference`, `notification_url`, `back_urls` e `requestOptions.idempotencyKey`;
-- erro claro quando `MERCADO_PAGO_ACCESS_TOKEN` ou `MERCADO_PAGO_WEBHOOK_URL` está vazio.
-
-Snippet de expectativa:
+Criar teste garantindo que estas URLs passam:
 
 ```ts
-expect(result.checkoutUrl).toBe('https://sandbox.mercadopago.test/checkout');
-expect(preferenceCreate).toHaveBeenCalledWith(expect.objectContaining({
-  requestOptions: { idempotencyKey: 'key-1' },
-}));
+https://example.com
+http://example.com/path?x=1
+https://sub.example.org
 ```
 
-- [ ] **Step 2: Rodar teste e confirmar falha**
+Expected result: `validatePublicHttpUrl(url)` retorna a URL normalizada.
 
-Run:
+- [ ] **Step 2: Escrever teste de URLs bloqueadas**
 
-```bash
-npm --workspace @veridit/billing-service test -- --runInBand mercado-pago-payment.provider.spec.ts
-```
-
-Expected: FAIL porque a seleção explícita de sandbox ainda não existe.
-
-- [ ] **Step 3: Adicionar variável de ambiente de modo**
-
-Adicionar em `apps/billing-service/.env.example`:
-
-```env
-MERCADO_PAGO_ENVIRONMENT=sandbox
-MERCADO_PAGO_WEBHOOK_SECRET=
-```
-
-Manter `MERCADO_PAGO_ACCESS_TOKEN` vazio no exemplo para evitar commit de segredo.
-
-- [ ] **Step 4: Implementar seleção de checkout URL**
-
-No provider, criar função curta:
-
-```ts
-function selectCheckoutUrl(response) {
-  return isSandbox() ? response.sandbox_init_point : response.init_point;
-}
-```
-
-Regras:
-
-- `MERCADO_PAGO_ENVIRONMENT=sandbox` usa `sandbox_init_point`;
-- `MERCADO_PAGO_ENVIRONMENT=production` usa `init_point`;
-- valor ausente usa `sandbox`;
-- se a URL esperada vier vazia, lançar `ServiceUnavailableException`.
-
-- [ ] **Step 5: Ajustar defaults dos back_urls**
-
-Trocar defaults para rotas existentes após Task 5:
+Criar teste garantindo que estas entradas falham com `BadRequestException`:
 
 ```text
-http://localhost:3000/pagamento/retorno?status=success
-http://localhost:3000/pagamento/retorno?status=failure
-http://localhost:3000/pagamento/retorno?status=pending
+javascript:alert(1)
+data:text/html,hello
+file:///etc/passwd
+ftp://example.com
+http://localhost:3000
+http://127.0.0.1:3000
+http://10.0.0.1
+http://172.16.0.10
+http://192.168.0.10
 ```
 
-- [ ] **Step 6: Rodar testes do billing**
+- [ ] **Step 3: Implementar service**
+
+Implementar `UrlPolicyService` com estas regras:
+
+- aceitar somente protocolos `http:` e `https:`;
+- exigir hostname;
+- resolver DNS com `node:dns/promises`;
+- bloquear `localhost`, loopback, link-local, private IPv4, private IPv6 e host sem DNS publico;
+- permitir hosts privados apenas quando `CAPTURE_ALLOW_PRIVATE_HOSTS=true`;
+- retornar `url.toString()` normalizado.
+
+- [ ] **Step 4: Registrar provider**
+
+Adicionar `UrlPolicyService` em `providers` no `apps/capture-service/src/app.module.ts`.
+
+- [ ] **Step 5: Rodar teste**
 
 Run:
 
 ```bash
-npm --workspace @veridit/billing-service test -- --runInBand
-npm --workspace @veridit/billing-service run build
+npm --workspace @veridit/capture-service run test -- url-policy.service.spec.ts
 ```
 
-Expected: exit code 0.
+Expected:
+
+```text
+PASS src/capture/url-policy.service.spec.ts
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/capture-service/src/capture/url-policy.service.ts apps/capture-service/src/capture/url-policy.service.spec.ts apps/capture-service/src/app.module.ts
+git commit -m "feat: validate capture target urls"
+```
+
+---
+
+## Task 4: Capture Storage
+
+**Files:**
+- Create: `apps/capture-service/src/capture/capture-storage.service.ts`
+- Test: `apps/capture-service/src/capture/capture-storage.service.spec.ts`
+- Modify: `apps/capture-service/src/app.module.ts`
+
+- [ ] **Step 1: Escrever teste de diretorio por registro**
+
+Teste:
+
+- dado `CAPTURE_STORAGE_DIR=tmp/captures-test`;
+- quando pedir diretorio para `record-1`;
+- deve criar `tmp/captures-test/record-1`;
+- deve retornar caminho absoluto dentro do storage configurado.
+
+- [ ] **Step 2: Escrever teste de nome de arquivo**
+
+Teste:
+
+- screenshot deve usar formato `screenshot-YYYYMMDD-HHmmss-SSS.png`;
+- video deve usar formato `video-YYYYMMDD-HHmmss-SSS.webm`;
+- nomes nao podem conter `/`, `\`, `..` ou espaco.
+
+- [ ] **Step 3: Implementar service**
+
+Responsabilidades:
+
+- ler `CAPTURE_STORAGE_DIR`;
+- criar diretorios com `fs.promises.mkdir(..., { recursive: true })`;
+- gerar nomes deterministamente por tipo e data;
+- retornar tamanho com `fs.promises.stat(filePath).size`;
+- rejeitar tentativa de resolver caminho fora do storage.
+
+- [ ] **Step 4: Registrar provider**
+
+Adicionar `CaptureStorageService` em `providers` no `AppModule`.
+
+- [ ] **Step 5: Rodar teste**
+
+Run:
+
+```bash
+npm --workspace @veridit/capture-service run test -- capture-storage.service.spec.ts
+```
+
+Expected:
+
+```text
+PASS src/capture/capture-storage.service.spec.ts
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/capture-service/src/capture/capture-storage.service.ts apps/capture-service/src/capture/capture-storage.service.spec.ts apps/capture-service/src/app.module.ts
+git commit -m "feat: add capture asset storage"
+```
+
+---
+
+## Task 5: Playwright Session Manager
+
+**Files:**
+- Create: `apps/capture-service/src/capture/playwright-browser.service.ts`
+- Create: `apps/capture-service/src/capture/capture-session-manager.service.ts`
+- Test: `apps/capture-service/src/capture/capture-session-manager.service.spec.ts`
+- Modify: `apps/capture-service/src/app.module.ts`
+
+- [ ] **Step 1: Definir interface interna de sessao**
+
+Criar tipos internos pequenos:
+
+```ts
+type CaptureSession = {
+  recordId: string;
+  userId: string;
+  browser: Browser;
+  context: BrowserContext;
+  page: Page;
+  viewport: { width: number; height: number };
+  recordingPath?: string;
+  lastActivityAt: number;
+};
+```
+
+- [ ] **Step 2: Escrever testes com Playwright mockado**
+
+Cobrir estes casos:
+
+- `startSession` abre browser, context e page com viewport configurado;
+- `getFrame` chama `page.screenshot({ type: "jpeg", quality })` e retorna base64;
+- `sendInput` mapeia `click` para `page.mouse.click(x, y)`;
+- `sendInput` mapeia `wheel` para `page.mouse.wheel(deltaX, deltaY)`;
+- `sendInput` mapeia `text` para `page.keyboard.insertText(value)`;
+- `captureScreenshot` salva PNG em disco e retorna caminho;
+- `startVideo` falha com `ConflictException` se ja estiver gravando;
+- `stopVideo` falha com `ConflictException` se nao estiver gravando;
+- `closeSession` fecha browser e remove sessao da memoria;
+- sessao inexistente retorna `NotFoundException`.
+
+- [ ] **Step 3: Implementar `PlaywrightBrowserService`**
+
+Responsabilidade unica:
+
+- chamar `chromium.launch({ headless: true })`;
+- criar context com viewport;
+- criar page;
+- executar `page.goto(siteUrl, { waitUntil: "domcontentloaded", timeout: 30000 })`;
+- retornar `{ browser, context, page }`.
+
+- [ ] **Step 4: Implementar `CaptureSessionManagerService`**
+
+Responsabilidades:
+
+- manter `Map<string, CaptureSession>`;
+- `startSession(record)` inicia browser remoto;
+- `getFrame(recordId)` retorna JPEG base64;
+- `sendInput(recordId, input)` aplica input na pagina;
+- `captureScreenshot(recordId, filePath)` salva PNG;
+- `startVideo(recordId, filePath)` chama `page.screencast.start({ path: filePath })`;
+- `stopVideo(recordId)` chama `page.screencast.stop()`;
+- `closeSession(recordId)` fecha browser;
+- `closeIdleSessions()` encerra sessoes com `lastActivityAt` acima de `CAPTURE_IDLE_TTL_MS`;
+- `onModuleDestroy()` fecha todos os browsers abertos.
+
+- [ ] **Step 5: Registrar providers**
+
+Adicionar em `AppModule`:
+
+```ts
+PlaywrightBrowserService,
+CaptureSessionManagerService
+```
+
+- [ ] **Step 6: Rodar teste**
+
+Run:
+
+```bash
+npm --workspace @veridit/capture-service run test -- capture-session-manager.service.spec.ts
+```
+
+Expected:
+
+```text
+PASS src/capture/capture-session-manager.service.spec.ts
+```
 
 - [ ] **Step 7: Commit**
 
-Run:
-
 ```bash
-git add apps/billing-service/src/payments/mercado-pago-payment.provider.ts apps/billing-service/src/payments/mercado-pago-payment.provider.spec.ts apps/billing-service/.env.example
-git commit -m "feat: make mercado pago sandbox checkout explicit"
+git add apps/capture-service/src/capture/playwright-browser.service.ts apps/capture-service/src/capture/capture-session-manager.service.ts apps/capture-service/src/capture/capture-session-manager.service.spec.ts apps/capture-service/src/app.module.ts
+git commit -m "feat: manage remote browser capture sessions"
 ```
 
 ---
 
-## Task 4: Validar Assinatura do Webhook no Billing
+## Task 6: Capture Service HTTP API
 
 **Files:**
-- Create: `apps/billing-service/src/payments/mercado-pago-webhook-signature.ts`
-- Modify: `apps/billing-service/src/app.controller.ts`
-- Modify: `apps/billing-service/src/app.service.ts`
-- Modify: `apps/billing-service/src/app.service.spec.ts`
+- Create: `apps/capture-service/src/dto/start-capture.dto.ts`
+- Create: `apps/capture-service/src/dto/browser-input.dto.ts`
+- Modify: `apps/capture-service/src/app.controller.ts`
+- Modify: `apps/capture-service/src/app.service.ts`
+- Test: `apps/capture-service/src/app.controller.spec.ts`
+- Test: `apps/capture-service/src/app.service.spec.ts`
 
-- [ ] **Step 1: Escrever testes de assinatura**
+- [ ] **Step 1: Criar DTO de inicio**
 
-Adicionar casos em `apps/billing-service/src/app.service.spec.ts`:
+`StartCaptureDto`:
 
-- processa webhook sem segredo configurado;
-- rejeita webhook com segredo configurado e `x-signature` ausente;
-- rejeita webhook com `v1` inválido;
-- aceita webhook com HMAC correto.
+- `userId`: string obrigatoria;
+- `siteUrl`: URL obrigatoria;
+- `title`: string opcional.
 
-Expected rejection:
-
-```ts
-await expect(service.handleMercadoPagoWebhook(payload, headers)).rejects.toThrow(BadRequestException);
-```
-
-- [ ] **Step 2: Rodar teste e confirmar falha**
-
-Run:
-
-```bash
-npm --workspace @veridit/billing-service test -- --runInBand
-```
-
-Expected: FAIL porque `handleMercadoPagoWebhook` ainda não recebe headers nem valida assinatura.
-
-- [ ] **Step 3: Criar helper de assinatura**
-
-Criar `apps/billing-service/src/payments/mercado-pago-webhook-signature.ts` com responsabilidade única:
-
-```ts
-export function verifyMercadoPagoWebhookSignature({ dataId, requestId, signature, secret }) { ... }
-```
-
-Regra de manifesto:
+Quando `title` vier vazio, o service deve gerar:
 
 ```text
-id:{dataId};request-id:{requestId};ts:{ts};
+Captura - <hostname> - <YYYY-MM-DD HH:mm>
 ```
 
-Usar `crypto.createHmac('sha256', secret)` e comparação segura com `timingSafeEqual`.
+- [ ] **Step 2: Criar DTO de input**
 
-- [ ] **Step 4: Repassar headers no controller**
+`BrowserInputDto` deve validar:
 
-Alterar `apps/billing-service/src/app.controller.ts` para chamar:
+- `type` em `click`, `wheel`, `key`, `text`;
+- `click`: `x` e `y` numericos, inteiros, `>= 0`;
+- `wheel`: `deltaX` e `deltaY` numericos;
+- `key`: `key` string nao vazia;
+- `text`: `value` string nao vazia com limite de 500 caracteres.
+
+- [ ] **Step 3: Escrever testes do service**
+
+Cobrir:
+
+- `startRecord` valida URL, cria `ContentRecord` com `STARTED` e inicia Playwright;
+- `getFrame` delega para session manager;
+- `sendInput` delega para session manager;
+- `captureScreenshot` salva PNG, cria `CaptureAsset` tipo `IMAGE` e retorna asset;
+- `startVideo` inicia gravacao sem criar asset;
+- `stopVideo` cria `CaptureAsset` tipo `VIDEO` e retorna asset;
+- `completeRecord` fecha sessao, atualiza `finishedAt/status`, conta assets e publica `capture.completed`.
+
+- [ ] **Step 4: Implementar `AppService` real**
+
+Adicionar metodos:
 
 ```ts
-this.appService.handleMercadoPagoWebhook(payload, {
-  xSignature: headers['x-signature'],
-  xRequestId: headers['x-request-id'],
-});
+startRecord(body: StartCaptureRequest): Promise<StartCaptureSessionResponse>
+getRecord(recordId: string): Promise<ContentRecordResponse>
+getFrame(recordId: string): Promise<CaptureFrameResponse>
+sendInput(recordId: string, input: BrowserInputRequest): Promise<BrowserInputResponse>
+captureScreenshot(recordId: string): Promise<CaptureAssetResponse>
+startVideo(recordId: string): Promise<CaptureVideoStateResponse>
+stopVideo(recordId: string): Promise<CaptureVideoStateResponse>
+completeRecord(recordId: string): Promise<CompleteCaptureResponse>
 ```
 
-- [ ] **Step 5: Validar antes de consultar pagamento**
+Erro esperado:
 
-No início de `handleMercadoPagoWebhook`, quando `MERCADO_PAGO_WEBHOOK_SECRET` estiver preenchido:
+- registro inexistente: `NotFoundException`;
+- registro ja concluido: `ConflictException`;
+- sessao de browser ausente em registro `STARTED`: `ConflictException` com mensagem `Sessao de captura nao esta ativa`;
+- URL bloqueada: `BadRequestException`.
 
-- extrair `data.id` do body/query mesclado;
-- exigir `x-signature`;
-- exigir `x-request-id`;
-- validar HMAC;
-- lançar `BadRequestException` se qualquer verificação falhar.
-
-- [ ] **Step 6: Rodar testes do billing**
-
-Run:
-
-```bash
-npm --workspace @veridit/billing-service test -- --runInBand
-npm --workspace @veridit/billing-service run build
-```
-
-Expected: exit code 0.
-
-- [ ] **Step 7: Commit**
-
-Run:
-
-```bash
-git add apps/billing-service/src/payments/mercado-pago-webhook-signature.ts apps/billing-service/src/app.controller.ts apps/billing-service/src/app.service.ts apps/billing-service/src/app.service.spec.ts
-git commit -m "feat: validate mercado pago webhook signature"
-```
-
----
-
-## Task 5: Conectar Frontend ao Checkout Real
-
-**Files:**
-- Modify: `apps/web/src/lib/gateway.ts`
-- Modify: `apps/web/src/lib/mock-data.ts`
-- Modify: `apps/web/src/components/veridit/payment-client.tsx`
-- Modify: `apps/web/src/app/creditos/page.tsx`
-
-- [ ] **Step 1: Adicionar client real no gateway**
-
-Em `apps/web/src/lib/gateway.ts`, criar:
-
-```ts
-export function createCreditPurchase(payload, idempotencyKey) {
-  return requestGateway('/billing/purchases', {
-    method: 'POST',
-    headers: { 'Idempotency-Key': idempotencyKey },
-    body: JSON.stringify(payload),
-  });
-}
-```
-
-Tipo de retorno:
-
-```ts
-{ purchaseId: string; status: 'PENDING' | 'PAID' | 'CANCELED'; checkoutUrl: string; providerPreferenceId: string }
-```
-
-- [ ] **Step 2: Mapear planos do front para pacotes do backend**
-
-Em `apps/web/src/lib/mock-data.ts`, adicionar em cada plano:
-
-```ts
-gatewayPackageName: 'basic' | 'medium' | 'premium'
-```
+- [ ] **Step 5: Expor rotas no controller**
 
 Mapeamento:
 
 ```text
-initial -> basic
-professional -> medium
-enterprise -> premium
+POST /records -> startRecord
+GET /records/:recordId -> getRecord
+GET /records/:recordId/frame -> getFrame
+POST /records/:recordId/input -> sendInput
+POST /records/:recordId/screenshots -> captureScreenshot
+POST /records/:recordId/video/start -> startVideo
+POST /records/:recordId/video/stop -> stopVideo
+POST /records/:recordId/complete -> completeRecord
 ```
 
-- [ ] **Step 3: Alterar estado da tela de pagamento**
+Manter `POST /records/mock` funcionando para demos antigas ate a UI deixar de usar.
 
-Em `apps/web/src/components/veridit/payment-client.tsx`, adicionar:
-
-```ts
-const [paymentMethod, setPaymentMethod] = useState<'pix' | 'mercado-pago'>('pix');
-```
-
-Usar `onValueChange` no `Tabs` para controlar o método selecionado.
-
-- [ ] **Step 4: Implementar ação Mercado Pago**
-
-Quando `paymentMethod === 'mercado-pago'`:
-
-- gerar `idempotencyKey` com `crypto.randomUUID()`;
-- chamar `createCreditPurchase`;
-- se `result.ok`, redirecionar com `window.location.assign(result.data.checkoutUrl)`;
-- se falhar, exibir `toast.error` com a mensagem do gateway;
-- não chamar `createMockPurchase`.
-
-- [ ] **Step 5: Manter Pix como simulação separada**
-
-Quando `paymentMethod === 'pix'`:
-
-- manter `createMockPurchase` por enquanto;
-- ajustar texto do botão para `Confirmar Pix simulado`;
-- ajustar texto da aba Mercado Pago para `Ir para checkout sandbox`.
-
-- [ ] **Step 6: Atualizar copy da página de créditos**
-
-Em `apps/web/src/app/creditos/page.tsx`, substituir texto que diz apenas “fluxo demonstrativo” por:
-
-```text
-Pix demonstrativo ou Mercado Pago sandbox.
-```
-
-- [ ] **Step 7: Verificar frontend**
+- [ ] **Step 6: Rodar testes do capture-service**
 
 Run:
 
 ```bash
-npm --workspace @veridit/web run build
+npm --workspace @veridit/capture-service run test
 ```
 
-Expected: exit code 0.
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 7: Rodar build**
+
+Run:
+
+```bash
+npm --workspace @veridit/capture-service run build
+```
+
+Expected: exit code `0`.
 
 - [ ] **Step 8: Commit**
 
-Run:
-
 ```bash
-git add apps/web/src/lib/gateway.ts apps/web/src/lib/mock-data.ts apps/web/src/components/veridit/payment-client.tsx apps/web/src/app/creditos/page.tsx
-git commit -m "feat: connect web checkout to mercado pago sandbox"
+git add apps/capture-service/src apps/capture-service/package.json apps/capture-service/.env.example
+git commit -m "feat: expose real capture session api"
 ```
 
 ---
 
-## Task 6: Criar Página de Retorno do Checkout
+## Task 7: API Gateway Proxy
 
 **Files:**
-- Create: `apps/web/src/app/pagamento/retorno/page.tsx`
-- Modify: `apps/billing-service/.env.example`
+- Modify: `apps/api-gateway/src/app.controller.ts`
+- Modify: `apps/api-gateway/src/app.service.ts`
+- Test: `apps/api-gateway/src/app.controller.spec.ts`
+- Test: `apps/api-gateway/src/app.service.spec.ts`
 
-- [ ] **Step 1: Criar página de retorno**
+- [ ] **Step 1: Escrever testes de controller**
 
-Criar `apps/web/src/app/pagamento/retorno/page.tsx`.
+Adicionar expectativas:
 
-Ela deve ler `searchParams.status` e renderizar três estados:
+- `POST /capture/records` chama `appService.startCapture`;
+- `GET /capture/records/:recordId` chama `appService.getCaptureRecord`;
+- `GET /capture/records/:recordId/frame` chama `appService.getCaptureFrame`;
+- `POST /capture/records/:recordId/input` chama `appService.sendCaptureInput`;
+- `POST /capture/records/:recordId/screenshots` chama `appService.captureScreenshot`;
+- `POST /capture/records/:recordId/video/start` chama `appService.startCaptureVideo`;
+- `POST /capture/records/:recordId/video/stop` chama `appService.stopCaptureVideo`;
+- `POST /capture/records/:recordId/complete` chama `appService.completeCapture`.
+
+- [ ] **Step 2: Escrever testes de service**
+
+Mockar `fetch` e verificar que as chamadas vao para:
 
 ```text
-success -> pagamento recebido pelo Mercado Pago; saldo será confirmado pelo webhook
-pending -> pagamento em análise ou aguardando confirmação
-failure -> pagamento não concluído
+http://127.0.0.1:3103/records
+http://127.0.0.1:3103/records/record-1
+http://127.0.0.1:3103/records/record-1/frame
+http://127.0.0.1:3103/records/record-1/input
+http://127.0.0.1:3103/records/record-1/screenshots
+http://127.0.0.1:3103/records/record-1/video/start
+http://127.0.0.1:3103/records/record-1/video/stop
+http://127.0.0.1:3103/records/record-1/complete
 ```
 
-Adicionar botões:
+Preservar erros `400`, `404` e `409` do `capture-service` como `HttpException`, igual ao fluxo de billing com `preserveClientErrors`.
+
+- [ ] **Step 3: Implementar metodos no service**
+
+Adicionar metodos com nomes alinhados aos testes:
+
+```ts
+startCapture(body, idempotencyKey?)
+getCaptureRecord(recordId)
+getCaptureFrame(recordId)
+sendCaptureInput(recordId, body)
+captureScreenshot(recordId)
+startCaptureVideo(recordId)
+stopCaptureVideo(recordId)
+completeCapture(recordId)
+```
+
+Nao exigir `Idempotency-Key` nesta primeira versao.
+
+- [ ] **Step 4: Implementar rotas no controller**
+
+Usar os mesmos paths publicos definidos em "Rotas Alvo".
+
+- [ ] **Step 5: Rodar testes**
+
+Run:
+
+```bash
+npm --workspace @veridit/api-gateway run test
+```
+
+Expected:
 
 ```text
-Voltar para dashboard -> /dashboard
-Comprar créditos -> /creditos
+PASS src/app.controller.spec.ts
+PASS src/app.service.spec.ts
 ```
 
-- [ ] **Step 2: Atualizar URLs no env example**
+- [ ] **Step 6: Rodar build**
 
-Em `apps/billing-service/.env.example`:
+Run:
 
-```env
-FRONTEND_SUCCESS_URL=http://localhost:3000/pagamento/retorno?status=success
-FRONTEND_FAILURE_URL=http://localhost:3000/pagamento/retorno?status=failure
-FRONTEND_PENDING_URL=http://localhost:3000/pagamento/retorno?status=pending
+```bash
+npm --workspace @veridit/api-gateway run build
 ```
 
-- [ ] **Step 3: Verificar build web**
+Expected: exit code `0`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/api-gateway/src/app.controller.ts apps/api-gateway/src/app.service.ts apps/api-gateway/src/app.controller.spec.ts apps/api-gateway/src/app.service.spec.ts
+git commit -m "feat: proxy real capture session routes"
+```
+
+---
+
+## Task 8: Web Gateway Client
+
+**Files:**
+- Modify: `apps/web/src/lib/gateway.ts`
+
+- [ ] **Step 1: Adicionar funcoes HTTP**
+
+Adicionar funcoes pequenas:
+
+```ts
+startCaptureSession(payload)
+getCaptureRecord(recordId)
+getCaptureFrame(recordId)
+sendCaptureInput(recordId, payload)
+captureScreenshot(recordId)
+startCaptureVideo(recordId)
+stopCaptureVideo(recordId)
+completeCapture(recordId)
+```
+
+- [ ] **Step 2: Garantir retorno tipado**
+
+Importar tipos de `@veridit/contracts`:
+
+```ts
+StartCaptureSessionResponse
+CaptureFrameResponse
+BrowserInputRequest
+BrowserInputResponse
+CaptureAssetResponse
+CaptureVideoStateResponse
+CompleteCaptureResponse
+```
+
+- [ ] **Step 3: Manter `startMockCapture` temporariamente**
+
+Nao remover `startMockCapture` neste task. A remocao deve acontecer apenas depois que a nova UI nao importar mais essa funcao.
+
+- [ ] **Step 4: Build do web**
 
 Run:
 
@@ -600,272 +821,461 @@ Run:
 npm --workspace @veridit/web run build
 ```
 
-Expected: exit code 0.
+Expected: exit code `0`.
 
-- [ ] **Step 4: Commit**
-
-Run:
+- [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/src/app/pagamento/retorno/page.tsx apps/billing-service/.env.example
-git commit -m "feat: add mercado pago checkout return page"
+git add apps/web/src/lib/gateway.ts
+git commit -m "feat: add capture session gateway client"
 ```
 
 ---
 
-## Task 7: Documentar Sandbox e URLs Públicas
+## Task 9: URL Entry Screen
 
 **Files:**
-- Modify: `docs/02-como-rodar.md`
-- Modify: `docs/04-servicos.md`
+- Modify: `apps/web/src/app/captura/page.tsx`
+- Modify: `apps/web/src/components/veridit/capture-client.tsx`
 
-- [ ] **Step 1: Atualizar docs de ambiente**
+- [ ] **Step 1: Simplificar a pagina**
 
-Em `docs/02-como-rodar.md`, adicionar seção “Mercado Pago sandbox” com:
+`apps/web/src/app/captura/page.tsx` deve continuar usando:
 
-```env
-MERCADO_PAGO_ENVIRONMENT=sandbox
-MERCADO_PAGO_ACCESS_TOKEN=TEST-...
-MERCADO_PAGO_WEBHOOK_SECRET=...
-MERCADO_PAGO_WEBHOOK_URL=https://<tunnel>/billing/payments/mercado-pago/webhook
-FRONTEND_SUCCESS_URL=http://localhost:3000/pagamento/retorno?status=success
-FRONTEND_FAILURE_URL=http://localhost:3000/pagamento/retorno?status=failure
-FRONTEND_PENDING_URL=http://localhost:3000/pagamento/retorno?status=pending
+```tsx
+<AppShell active="capture">
 ```
 
-Incluir regra explícita:
+Atualizar o heading:
 
 ```text
-Nunca commitar tokens TEST ou segredos reais.
+title: "Nova captura"
+description: "Informe o site que sera aberto em uma sessao navegavel para registro."
 ```
 
-- [ ] **Step 2: Documentar tunnel HTTPS**
+- [ ] **Step 2: Trocar formulario antigo**
 
-Ainda em `docs/02-como-rodar.md`, explicar:
+`CaptureClient` deve ter:
 
-- Mercado Pago precisa alcançar `MERCADO_PAGO_WEBHOOK_URL` via HTTPS;
-- para localhost, usar Cloudflare Tunnel, ngrok ou equivalente;
-- se o webhook passar pelo gateway, o tunnel deve apontar para `http://localhost:3001`;
-- se o webhook passar direto no billing, o tunnel deve apontar para `http://localhost:3102`.
+- input obrigatorio `URL do site`;
+- input opcional `Titulo do registro`;
+- resumo de saldo existente;
+- botao `Abrir sessao de captura`;
+- estado loading enquanto chama o gateway.
 
-Escolha recomendada para esta implementação:
+Remover da tela inicial:
+
+- escolha previa entre video e screenshot;
+- preview mock;
+- checklist tecnico;
+- switch de rolagem;
+- chamada para `startMockCapture`.
+
+- [ ] **Step 3: Gerar titulo quando vazio**
+
+No submit:
+
+- ler sessao com `getAuthSession()`;
+- validar sessao ausente com toast e retorno;
+- chamar `startCaptureSession`;
+- se `title` estiver vazio, enviar string vazia e deixar o backend gerar o titulo;
+- em sucesso, navegar para:
+
+```ts
+router.push(`/captura/${result.data.id}`);
+```
+
+- [ ] **Step 4: Tratar erro de URL bloqueada**
+
+Se gateway retornar `400`, mostrar:
 
 ```text
-Gateway público -> /billing/payments/mercado-pago/webhook
+Nao foi possivel abrir essa URL para captura.
 ```
 
-- [ ] **Step 3: Atualizar lista de rotas**
-
-Em `docs/04-servicos.md`, adicionar:
+Description:
 
 ```text
-POST /billing/purchases
-POST /billing/payments/mercado-pago/webhook
+Use um endereco publico iniciado por http:// ou https://.
 ```
 
-Atualizar descrição do billing para dizer que:
-
-- compra real cria preferência Mercado Pago;
-- compra mock continua disponível para Pix/demo;
-- saldo só é creditado após webhook aprovado.
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Rodar build**
 
 Run:
 
 ```bash
-git add docs/02-como-rodar.md docs/04-servicos.md
-git commit -m "docs: document mercado pago sandbox flow"
+npm --workspace @veridit/web run build
+```
+
+Expected: exit code `0`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/web/src/app/captura/page.tsx apps/web/src/components/veridit/capture-client.tsx
+git commit -m "feat: create capture url entry screen"
 ```
 
 ---
 
-## Task 8: Verificação Manual de Sandbox
+## Task 10: Navigable Capture Workspace
 
 **Files:**
-- No code files.
-- Use local `.env` files only; these files stay outside Git.
+- Create: `apps/web/src/app/captura/[recordId]/page.tsx`
+- Create: `apps/web/src/components/veridit/capture-workspace-client.tsx`
+- Modify: `apps/web/src/app/captura/concluida/page.tsx`
 
-- [ ] **Step 1: Preparar ambientes**
+- [ ] **Step 1: Criar pagina por registro**
 
-Preencher `apps/billing-service/.env`:
+`apps/web/src/app/captura/[recordId]/page.tsx` deve:
 
-```env
-MERCADO_PAGO_ENVIRONMENT=sandbox
-MERCADO_PAGO_ACCESS_TOKEN=<token TEST do Mercado Pago>
-MERCADO_PAGO_WEBHOOK_SECRET=<segredo da aplicação Mercado Pago>
-MERCADO_PAGO_WEBHOOK_URL=https://<tunnel>/billing/payments/mercado-pago/webhook
+- receber `params.recordId`;
+- renderizar `AppShell active="capture"`;
+- renderizar `CaptureWorkspaceClient recordId={recordId}`.
+
+- [ ] **Step 2: Criar layout do workspace**
+
+`CaptureWorkspaceClient` deve ter:
+
+- area principal com container 16:9;
+- imagem do frame remoto dentro do container;
+- camada transparente por cima para capturar mouse, teclado e paste;
+- lateral fixa com botoes:
+  - `Tirar print`;
+  - `Iniciar gravacao`;
+  - `Parar gravacao`;
+  - `Concluir captura`;
+- painel pequeno com URL atual e status.
+
+- [ ] **Step 3: Implementar polling de frame**
+
+Comportamento:
+
+- buscar frame inicial ao montar;
+- atualizar a cada `500 ms` enquanto `document.visibilityState === "visible"`;
+- pausar polling enquanto uma requisicao de frame estiver em andamento;
+- mostrar skeleton enquanto nao houver frame;
+- em erro `409`, mostrar estado:
+
+```text
+Sessao de captura nao esta ativa.
 ```
 
-- [ ] **Step 2: Subir infra e apps**
+- [ ] **Step 4: Mapear clique**
+
+No `pointerdown` da camada transparente:
+
+- medir `getBoundingClientRect()`;
+- converter coordenadas renderizadas para viewport remoto;
+- enviar:
+
+```ts
+{ type: "click", x, y }
+```
+
+- chamar `refreshFrame()` apos o input.
+
+- [ ] **Step 5: Mapear scroll**
+
+No `wheel`:
+
+- chamar `event.preventDefault()`;
+- enviar:
+
+```ts
+{ type: "wheel", deltaX: event.deltaX, deltaY: event.deltaY }
+```
+
+- chamar `refreshFrame()` apos o input.
+
+- [ ] **Step 6: Mapear teclado**
+
+A camada deve ter `tabIndex={0}`.
+
+No `keydown`:
+
+- ignorar teclas modificadoras isoladas (`Shift`, `Control`, `Alt`, `Meta`);
+- enviar:
+
+```ts
+{
+  type: "key",
+  key: event.key,
+  code: event.code,
+  ctrlKey: event.ctrlKey,
+  shiftKey: event.shiftKey,
+  altKey: event.altKey,
+  metaKey: event.metaKey
+}
+```
+
+- chamar `refreshFrame()` apos o input.
+
+- [ ] **Step 7: Mapear paste**
+
+No `paste`:
+
+- ler `event.clipboardData.getData("text")`;
+- se houver texto, enviar:
+
+```ts
+{ type: "text", value }
+```
+
+- limitar no frontend a 500 caracteres para bater com DTO.
+
+- [ ] **Step 8: Implementar botao de print**
+
+Ao clicar:
+
+- chamar `captureScreenshot(recordId)`;
+- mostrar toast:
+
+```text
+Print salvo no registro.
+```
+
+- chamar `refreshFrame()`.
+
+- [ ] **Step 9: Implementar botoes de video**
+
+Estado:
+
+- `recording=false`: botao `Iniciar gravacao` habilitado, `Parar gravacao` desabilitado;
+- `recording=true`: botao `Iniciar gravacao` desabilitado, `Parar gravacao` habilitado.
+
+Ao iniciar:
+
+- chamar `startCaptureVideo(recordId)`;
+- mostrar toast:
+
+```text
+Gravacao iniciada.
+```
+
+Ao parar:
+
+- chamar `stopCaptureVideo(recordId)`;
+- mostrar toast:
+
+```text
+Video salvo no registro.
+```
+
+- [ ] **Step 10: Implementar conclusao**
+
+Ao clicar `Concluir captura`:
+
+- se `recording=true`, primeiro chamar `stopCaptureVideo(recordId)`;
+- chamar `completeCapture(recordId)`;
+- navegar para:
+
+```ts
+router.push(`/captura/concluida?recordId=${recordId}`);
+```
+
+- [ ] **Step 11: Atualizar tela concluida**
+
+`/captura/concluida` deve ler `recordId` via `searchParams` e exibir:
+
+```text
+Registro: <recordId>
+```
+
+Manter links para dashboard e nova captura.
+
+- [ ] **Step 12: Build do web**
 
 Run:
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d
+npm --workspace @veridit/web run build
+```
+
+Expected: exit code `0`.
+
+- [ ] **Step 13: Commit**
+
+```bash
+git add apps/web/src/app/captura/[recordId]/page.tsx apps/web/src/components/veridit/capture-workspace-client.tsx apps/web/src/app/captura/concluida/page.tsx
+git commit -m "feat: add navigable capture workspace"
+```
+
+---
+
+## Task 11: End-To-End Manual Verification
+
+**Files:**
+- No code changes expected.
+
+- [ ] **Step 1: Gerar Prisma se necessario**
+
+Run:
+
+```bash
 npm run prisma:generate
-npm run prisma:migrate
+```
+
+Expected: exit code `0`.
+
+- [ ] **Step 2: Subir ambiente**
+
+Run:
+
+```bash
 npm run dev
 ```
 
 Expected:
 
 ```text
-frontend em http://localhost:3000
-api-gateway em http://localhost:3001
-billing-service em http://localhost:3102
+@veridit/web: dev
+@veridit/api-gateway: dev
+@veridit/capture-service: dev
 ```
 
-- [ ] **Step 3: Criar tunnel HTTPS para o gateway**
+e servicos respondendo nas portas do repo.
 
-Exemplo com Cloudflare Tunnel:
+- [ ] **Step 3: Verificar health**
 
-```bash
-cloudflared tunnel --url http://localhost:3001
-```
-
-Configurar `MERCADO_PAGO_WEBHOOK_URL` com a URL pública gerada:
+Abrir:
 
 ```text
-https://<tunnel>/billing/payments/mercado-pago/webhook
+http://localhost:3001/capture/health
 ```
 
-- [ ] **Step 4: Executar compra sandbox pelo navegador**
+Expected:
 
-Fluxo:
+```json
+{ "service": "capture-service", "status": "ok" }
+```
 
-1. Abrir `http://localhost:3000/pagamento`.
-2. Selecionar aba `Mercado Pago`.
-3. Clicar no botão de checkout sandbox.
-4. Confirmar que a URL aberta contém domínio do Mercado Pago sandbox.
-5. Pagar com usuário/cartão de teste do Mercado Pago.
-6. Confirmar retorno em `/pagamento/retorno?status=success` ou `pending`.
+- [ ] **Step 4: Fluxo feliz com site publico**
 
-- [ ] **Step 5: Confirmar efeitos no banco**
+No browser:
 
-Conferir no banco `veridit_billing`:
+1. abrir `http://localhost:3000/dashboard`;
+2. clicar `Nova Captura`;
+3. informar `https://example.com`;
+4. clicar `Abrir sessao de captura`;
+5. confirmar que a pagina vai para `/captura/<recordId>`;
+6. confirmar que o container mostra o conteudo de `example.com`;
+7. clicar dentro do container;
+8. clicar `Tirar print`;
+9. clicar `Iniciar gravacao`;
+10. rolar a pagina dentro do container;
+11. clicar `Parar gravacao`;
+12. clicar `Concluir captura`;
+13. confirmar redirecionamento para `/captura/concluida?recordId=<recordId>`.
+
+- [ ] **Step 5: Verificar banco**
+
+No banco `veridit_capture`, confirmar:
 
 ```sql
-SELECT id, status, "providerPreferenceId", "providerPaymentId", "paidAt"
-FROM "CreditPurchase"
-ORDER BY "createdAt" DESC
-LIMIT 3;
-
-SELECT "userId", credits
-FROM "UserCreditBalance"
-ORDER BY "updatedAt" DESC
-LIMIT 3;
+select id, status, "siteUrl", "finishedAt" from "ContentRecord" order by "startedAt" desc limit 1;
+select "recordId", type, "fileName", "fileSizeBytes" from "CaptureAsset" order by "createdAt" desc limit 5;
 ```
 
 Expected:
 
+- `ContentRecord.status = COMPLETED`;
+- pelo menos um asset `IMAGE`;
+- um asset `VIDEO` quando a gravacao foi iniciada e parada;
+- `fileSizeBytes > 0`.
+
+- [ ] **Step 6: Verificar storage**
+
+Confirmar que existe diretorio:
+
 ```text
-CreditPurchase.status = PAID depois do webhook aprovado
-UserCreditBalance.credits incrementado uma única vez
+apps/capture-service/storage/captures/<recordId>
 ```
-
-- [ ] **Step 6: Reenviar webhook duplicado**
-
-Usar a ferramenta de teste do Mercado Pago ou reenviar a mesma notificação capturada.
 
 Expected:
 
+- arquivo `.png` criado pelo print;
+- arquivo `.webm` criado pelo video;
+- ambos com tamanho maior que zero.
+
+- [ ] **Step 7: Fluxo de URL bloqueada**
+
+Na tela `/captura`, tentar:
+
 ```text
-CreditPurchase permanece PAID
-UserCreditBalance não recebe créditos duplicados
+http://localhost:3000
 ```
 
----
+Expected:
 
-## Task 9: Verificação Automatizada Final
+- nao abre sessao;
+- mostra toast de URL invalida/bloqueada;
+- nenhum browser remoto fica aberto.
 
-**Files:**
-- All modified files from previous tasks.
+- [ ] **Step 8: Verificar encerramento**
 
-- [ ] **Step 1: Rodar testes unitários focados**
+Depois de concluir a captura:
+
+- chamar `GET /capture/records/:recordId/frame`;
+- expected: `409` com mensagem `Sessao de captura nao esta ativa`.
+
+- [ ] **Step 9: Rodar suite final**
 
 Run:
 
 ```bash
-npm --workspace @veridit/api-gateway test -- --runInBand
-npm --workspace @veridit/billing-service test -- --runInBand
-```
-
-Expected: all test suites pass.
-
-- [ ] **Step 2: Rodar geração Prisma e builds**
-
-Run:
-
-```bash
-npm --workspace @veridit/billing-service run prisma:generate
-npm --workspace @veridit/contracts run build
-npm --workspace @veridit/api-gateway run build
-npm --workspace @veridit/billing-service run build
+npm --workspace @veridit/capture-service run test
+npm --workspace @veridit/api-gateway run test
 npm --workspace @veridit/web run build
+npm run build
 ```
 
-Expected: all commands exit 0.
+Expected: todos finalizam com exit code `0`.
 
-- [ ] **Step 3: Checar conflitos e whitespace**
+- [ ] **Step 10: Commit de ajustes de verificacao**
 
-Run:
+Se a verificacao manual exigir pequenos ajustes, fazer commit separado:
 
 ```bash
-rg -n "<<<<<<<|=======|>>>>>>>" .
-git diff --check
-```
-
-Expected:
-
-```text
-rg exits with no matches
-git diff --check exits 0
-```
-
-- [ ] **Step 4: Revisar Git antes do commit final**
-
-Run:
-
-```bash
-git status --short
-git diff --stat
-```
-
-Expected:
-
-```text
-somente arquivos do plano de Mercado Pago aparecem alterados
-arquivos .env locais não aparecem
-```
-
-- [ ] **Step 5: Commit final de integração**
-
-Run:
-
-```bash
-git add apps docs package-lock.json
-git commit -m "feat: complete mercado pago sandbox checkout"
+git add <arquivos-ajustados>
+git commit -m "fix: stabilize capture session flow"
 ```
 
 ---
 
-## Critérios de Aceite
+## Acceptance Criteria
 
-- Usuário consegue iniciar compra Mercado Pago no frontend sem usar `/billing/purchases/mock`.
-- API Gateway encaminha `POST /billing/purchases` e `POST /billing/payments/mercado-pago/webhook`.
-- Billing cria preferência com `external_reference = purchaseId`.
-- Sandbox usa `sandbox_init_point`.
-- Mercado Pago consegue chamar webhook público HTTPS.
-- Webhook aprovado muda compra para `PAID` e incrementa créditos.
-- Webhook duplicado não duplica créditos.
-- Return page informa `success`, `pending` e `failure`.
-- Documentação ensina configurar token TEST, webhook secret, tunnel e URLs.
-- Nenhum segredo é commitado.
-- Builds e testes focados passam.
+- `/captura` exibe uma tela simples para iniciar nova captura a partir de URL.
+- Ao iniciar, o backend cria `ContentRecord` com status `STARTED`.
+- O usuario e redirecionado para `/captura/<recordId>`.
+- O container da sessao mostra frames reais do site aberto por Playwright.
+- Clique, scroll, teclado e paste no container sao enviados para o navegador remoto.
+- Botao `Tirar print` cria arquivo PNG e linha `CaptureAsset` tipo `IMAGE`.
+- Botao `Iniciar gravacao` inicia gravacao da sessao remota.
+- Botao `Parar gravacao` cria arquivo WEBM e linha `CaptureAsset` tipo `VIDEO`.
+- Botao `Concluir captura` fecha navegador remoto, marca registro como `COMPLETED`, seta `finishedAt` e publica `capture.completed`.
+- Frontend chama apenas `NEXT_PUBLIC_API_GATEWAY_URL`.
+- URLs privadas, locais e protocolos nao HTTP(S) sao bloqueados por padrao.
+- Build de `contracts`, `capture-service`, `api-gateway` e `web` passa.
+
+## Risks And Controls
+
+- **Sites com bot protection:** Playwright abre o site como navegador real, mas alguns sites podem bloquear automacao. O sistema deve mostrar erro claro quando `page.goto` falhar.
+- **Latencia do polling:** 500 ms e suficiente para primeiro corte. Reduzir demais aumenta CPU e trafego por base64.
+- **SSRF:** URL policy bloqueia host privado por padrao.
+- **Memoria de sessoes:** sessoes ficam em memoria. TTL fecha sessoes esquecidas.
+- **Arquivos locais:** storage local funciona para desenvolvimento. Deploy em producao deve mapear `CAPTURE_STORAGE_DIR` para volume persistente.
+
+## Documentation Notes
+
+Depois da implementacao, atualizar:
+
+- `docs/04-servicos.md` com as novas rotas reais de captura.
+- `docs/07-como-implementar-novas-features.md` removendo a pendencia generica de "captura real" ou apontando para o que ainda falta: relatorio real, ZIP e consumo de credito.
+- `docs/02-como-rodar.md` com `playwright install chromium` e as variaveis `CAPTURE_*`.
 
 ## Self-Review
 
-- Spec coverage: frontend real, gateway webhook, billing sandbox, assinatura, return pages, docs e verificação manual estão cobertos.
-- Placeholder scan: o plano não usa marcadores de trabalho indefinido.
-- Type consistency: nomes usados no plano batem com os nomes atuais: `CreateCreditPurchaseResponse`, `createCreditPurchase`, `handleMercadoPagoWebhook`, `providerPreferenceId`, `checkoutUrl`, `MERCADO_PAGO_WEBHOOK_URL`.
+- Spec coverage: o plano cobre tela de URL, container navegavel, print do container, gravacao de video, persistencia de assets e conclusao basica do registro.
+- Placeholder scan: o plano nao usa marcadores de trabalho indefinido nem passos sem criterio de conclusao.
+- Type consistency: rotas, contratos e nomes de metodos usam `recordId`, `CaptureFrameResponse`, `BrowserInputRequest`, `CaptureAssetResponse` e `CompleteCaptureResponse` de forma consistente.
