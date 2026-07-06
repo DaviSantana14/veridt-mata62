@@ -1,6 +1,19 @@
-import type { VeriditRecord } from "@/lib/mock-data";
+import type {
+  CaptureAssetResponse,
+  CaptureRecordDetailsResponse,
+  UserResponse,
+} from "@veridit/contracts";
 
-export type Evidence =
-  | { type: "context"; record: VeriditRecord }
-  | { type: "screenshot"; data: string }
-  | { type: "video"; duration: string };
+export type RecordZipAssetFile = {
+  asset: CaptureAssetResponse;
+  bytes: Uint8Array;
+  contentType: string;
+};
+
+export type RecordZipInput = {
+  record: CaptureRecordDetailsResponse;
+  responsibleUser?: UserResponse;
+  assets: CaptureAssetResponse[];
+  files: RecordZipAssetFile[];
+  generatedAt: string;
+};
