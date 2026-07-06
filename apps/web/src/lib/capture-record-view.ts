@@ -19,6 +19,7 @@ export type CaptureRecordView = {
   dataTypeLabel: string;
   detailsLabel: string;
   detailHref: string;
+  resumeHref?: string;
   actionHref: string;
   actionLabel: string;
   imageCount: number;
@@ -34,9 +35,11 @@ export function toCaptureRecordView(
   const dataTypeLabel = getCaptureDataTypeLabel(record);
   const detailsLabel = record.details ?? "Abrir detalhes";
   const isStarted = record.status === "STARTED";
-  const actionHref = isStarted
+  const detailHref = `/registros/${encodeURIComponent(record.id)}`;
+  const resumeHref = isStarted
     ? `/captura/${encodeURIComponent(record.id)}`
-    : `/captura/concluida?recordId=${encodeURIComponent(record.id)}`;
+    : undefined;
+  const actionHref = resumeHref ?? detailHref;
   const actionLabel = isStarted ? "Continuar" : "Abrir";
 
   return {
@@ -48,7 +51,8 @@ export function toCaptureRecordView(
     finishedAtLabel,
     dataTypeLabel,
     detailsLabel,
-    detailHref: actionHref,
+    detailHref,
+    resumeHref,
     actionHref,
     actionLabel,
     imageCount: record.imageCount,
