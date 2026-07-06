@@ -22,6 +22,28 @@ export class AppService {
     };
   }
 
+  async startCapture(
+      body: StartCaptureRequest,
+    ): Promise<ContentRecordResponse> {
+      const record = await this.prisma.contentRecord.create({
+        data: {
+          userId: body.userId,
+          title: body.title,
+          siteUrl: body.siteUrl,
+        },
+      });
+
+      return {
+        id: record.id,
+        userId: record.userId,
+        title: record.title,
+        siteUrl: record.siteUrl,
+        status: "STARTED", 
+        startedAt: record.startedAt.toISOString(),
+        finishedAt: undefined, 
+      };
+    }
+
   async createMockRecord(
     body: StartCaptureRequest,
   ): Promise<ContentRecordResponse> {

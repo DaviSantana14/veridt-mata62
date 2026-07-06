@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import type { ContentRecordResponse, HealthResponse } from '@veridit/contracts';
+import type { StartCaptureRequest, ContentRecordResponse, HealthResponse } from '@veridit/contracts';
 import { AppService } from './app.service';
 import { MockCaptureDto } from './dto/mock-capture.dto';
 
@@ -11,6 +11,13 @@ export class AppController {
   getHealth(): HealthResponse {
     return this.appService.getHealth();
   }
+
+  @Post('records/start')
+    startCapture(
+      @Body() body: MockCaptureDto,
+    ): Promise<ContentRecordResponse> {
+      return this.appService.startCapture(body);
+    }
 
   @Post('records/mock')
   createMockRecord(

@@ -1,6 +1,6 @@
 import {
-  Body,
   Controller,
+  Body,
   Get,
   Param,
   Patch,
@@ -121,5 +121,16 @@ export class AppController {
     @Body() body: MockCaptureDto,
   ): Promise<ContentRecordResponse> {
     return this.appService.createMockCapture(body);
+  }
+
+
+  @Post('capture/start')
+  async startCapture(@Body() body: any) {
+    const response = await fetch('http://127.0.0.1:3103/records/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return response.json();
   }
 }
