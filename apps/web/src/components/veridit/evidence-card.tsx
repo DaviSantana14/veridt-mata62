@@ -38,7 +38,7 @@ export function EvidenceCard({ record }: { record: CaptureRecordView }) {
         <span>{record.dataTypeLabel}</span>
         <span className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 font-medium text-primary">
           <FileText aria-hidden="true" />
-          {record.actionLabel}
+          Abrir
         </span>
       </div>
     </Link>

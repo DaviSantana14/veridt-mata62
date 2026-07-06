@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { ReportDocument } from "@/components/veridit/report-document";
 import { SectionHeader } from "@/components/veridit/section-header";
+import { getCaptureDetailHref } from "@/lib/capture-record-formatters";
 import { getRecordById } from "@/lib/mock-data";
 
 export default async function ReportPage({
@@ -20,7 +21,7 @@ export default async function ReportPage({
       <div className="mx-auto grid max-w-5xl gap-6">
         <div className="flex items-start gap-4">
           <Button asChild variant="outline" size="icon" aria-label="Voltar">
-            <Link href={`/registros/${record.id}`}>
+            <Link href={getCaptureDetailHref(record.id)}>
               <ArrowLeft aria-hidden="true" />
             </Link>
           </Button>

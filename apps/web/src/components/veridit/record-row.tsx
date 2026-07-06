@@ -3,6 +3,7 @@ import { Camera, MoreHorizontal, Video } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/veridit/status-badge";
+import { getCaptureDetailHref } from "@/lib/capture-record-formatters";
 import type { VeriditRecord } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -11,7 +12,7 @@ export function RecordRow({ record }: { record: VeriditRecord }) {
 
   return (
     <Link
-      href={`/registros/${record.id}`}
+      href={getCaptureDetailHref(record.id)}
       className="flex min-h-[74px] items-center justify-between gap-4 rounded-[10px] border bg-card p-4 outline-none transition-colors hover:bg-muted/35 focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       <div className="flex min-w-0 items-center gap-4">

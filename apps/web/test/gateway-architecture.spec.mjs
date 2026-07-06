@@ -23,6 +23,17 @@ const evidenceCard = readProjectFile(
   "src/components/veridit/evidence-card.tsx",
 );
 const captureRecordView = readProjectFile("src/lib/capture-record-view.ts");
+const captureRecordFormatters = readProjectFile(
+  "src/lib/capture-record-formatters.ts",
+);
+const captureClient = readProjectFile(
+  "src/components/veridit/capture-client.tsx",
+);
+const recordRow = readProjectFile("src/components/veridit/record-row.tsx");
+const recordDetailsPage = readProjectFile("src/app/registros/[id]/page.tsx");
+const recordReportPage = readProjectFile(
+  "src/app/registros/[id]/relatorio/page.tsx",
+);
 const logoutButton = readProjectFile(
   "src/components/veridit/logout-button.tsx",
 );
@@ -176,19 +187,84 @@ assert.match(
   "started capture records must be handled separately from finished records",
 );
 assert.match(
-  captureRecordView,
-  /`\/captura\/\$\{encodeURIComponent\(record\.id\)\}`/,
-  "started capture record list actions must point to the capture resume route",
+  captureRecordFormatters,
+  /`\/registros\/\$\{encodeURIComponent\(recordId\)\}`/,
+  "capture record detail routes must encode ids and point to the real details page",
 );
 assert.match(
-  captureRecordView,
-  /`\/captura\/concluida\?recordId=\$\{encodeURIComponent\(record\.id\)\}`/,
-  "finished capture record list actions must point to a real-data route",
+  captureRecordFormatters,
+  /`\/captura\/\$\{encodeURIComponent\(recordId\)\}`/,
+  "capture resume routes must encode ids and remain available separately from details",
+);
+assert.match(
+  dashboardClient,
+  /href=\{record\.detailHref\}[\s\S]*Abrir/,
+  "dashboard record list primary action must open the real details page",
+);
+assert.match(
+  dashboardClient,
+  /href=\{record\.resumeHref\}[\s\S]*Continuar/,
+  "dashboard record list may expose capture resume as a separate action",
+);
+assert.match(
+  evidenceCard,
+  /href=\{record\.detailHref\}/,
+  "mobile evidence cards must open the real details page",
+);
+assert.doesNotMatch(
+  `${dashboardClient}\n${evidenceCard}`,
+  /\/captura\/concluida/,
+  "real capture record list actions must not route to the old completion page",
 );
 assert.doesNotMatch(
   `${dashboardClient}\n${evidenceCard}`,
   /\/registros\/\$\{record\.id\}/,
-  "real capture record list actions must not route to the mock-backed registros page",
+  "real capture record list actions must use encoded shared route helpers instead of inline ids",
+);
+assert.match(
+  captureClient,
+  /getCaptureResumeHref\(result\.data\.id\)/,
+  "capture creation must navigate through the shared resume route helper",
+);
+assert.match(
+  recordRow,
+  /href=\{getCaptureDetailHref\(record\.id\)\}/,
+  "legacy record rows must navigate through the shared detail route helper",
+);
+assert.match(
+  recordReportPage,
+  /href=\{getCaptureDetailHref\(record\.id\)\}/,
+  "legacy report page back links must navigate through the shared detail route helper",
+);
+assert.match(
+  recordDetailsPage,
+  /params:\s*Promise<\{\s*id: string\s*\}>/,
+  "record details page must type dynamic route params using the current App Router contract",
+);
+assert.match(
+  recordDetailsPage,
+  /const \{ id \} = await params;/,
+  "record details page must await dynamic route params",
+);
+assert.match(
+  recordDetailsPage,
+  /getCaptureRecord\(id\)/,
+  "record details page must fetch the capture record through the gateway",
+);
+assert.match(
+  recordDetailsPage,
+  /getUserProfile\(recordResult\.data\.userId\)/,
+  "record details page must fetch responsible user name and email through the gateway",
+);
+assert.match(
+  recordDetailsPage,
+  /toCaptureRecordDetailView\(/,
+  "record details page must map backend data through the details view model",
+);
+assert.doesNotMatch(
+  recordDetailsPage,
+  /@\/lib\/mock-data|getRecordById|chainOfCustody|Baixar ZIP|Relatório/,
+  "record details page must not render mock-backed detail, report, zip, or custody content",
 );
 assert.doesNotMatch(
   `${profilePage}\n${profileClient}`,

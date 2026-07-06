@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useUserCreditBalance } from "@/components/veridit/credit-balance";
 import { getAuthSession } from "@/lib/auth-session";
+import { getCaptureResumeHref } from "@/lib/capture-record-formatters";
 import { startCapture } from "@/lib/gateway";
 
 export function CaptureClient() {
@@ -66,7 +67,7 @@ export function CaptureClient() {
     }
 
     toast.success("Sessão de captura iniciada.");
-    router.push(`/captura/${result.data.id}`);
+    router.push(getCaptureResumeHref(result.data.id));
   }
 
   return (

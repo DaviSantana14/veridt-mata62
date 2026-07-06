@@ -277,11 +277,16 @@ export function DashboardClient() {
                       <TableCell>{record.startedAtLabel}</TableCell>
                       <TableCell>{record.finishedAtLabel}</TableCell>
                       <TableCell className="text-right">
-                        <Button asChild variant="ghost" size="sm">
-                          <Link href={record.actionHref}>
-                            {record.actionLabel}
-                          </Link>
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          {record.resumeHref ? (
+                            <Button asChild variant="ghost" size="sm">
+                              <Link href={record.resumeHref}>Continuar</Link>
+                            </Button>
+                          ) : null}
+                          <Button asChild variant="ghost" size="sm">
+                            <Link href={record.detailHref}>Abrir</Link>
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
