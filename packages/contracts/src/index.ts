@@ -254,6 +254,11 @@ export interface CaptureAssetResponse {
   createdAt: string;
 }
 
+export interface ListCaptureAssetsResponse {
+  recordId: string;
+  assets: CaptureAssetResponse[];
+}
+
 export type BrowserInputRequest =
   | { type: "click"; x: number; y: number }
   | { type: "wheel"; deltaX: number; deltaY: number }
