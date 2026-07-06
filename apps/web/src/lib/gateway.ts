@@ -10,6 +10,7 @@ import type {
   CreateCardPaymentResponse,
   CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
+  ListCaptureAssetsResponse,
   ListCaptureRecordsResponse,
   NavigateCaptureRequest,
   NavigateCaptureResponse,
@@ -132,6 +133,90 @@ export function listCaptureRecords(userId: string) {
       cache: "no-store",
     },
   );
+}
+
+export function listCaptureAssets(recordId: string) {
+  return requestGateway<ListCaptureAssetsResponse>(
+    `/capture/records/${encodeURIComponent(recordId)}/assets`,
+    {
+      method: "GET",
+      cache: "no-store",
+    },
+  );
+}
+
+export async function downloadCaptureAssetBytes(
+  recordId: string,
+  assetId: string,
+): Promise<
+  GatewayResult<{
+    bytes: Uint8Array;
+    contentType: string;
+    contentDisposition?: string;
+    contentLength?: number;
+  }>
+> {
+  try {
+    const response = await fetch(
+      `${BASE_URL}/capture/records/${encodeURIComponent(
+        recordId,
+      )}/assets/${encodeURIComponent(assetId)}/download`,
+      {
+        method: "GET",
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      const data = parseGatewayError(text);
+
+      return {
+        ok: false,
+        status: response.status,
+        message:
+          data?.message ?? data?.payload?.message ?? `Erro ${response.status}`,
+      };
+    }
+
+    const buffer = await response.arrayBuffer();
+    const contentLength = response.headers.get("content-length");
+
+    return {
+      ok: true,
+      data: {
+        bytes: new Uint8Array(buffer),
+        contentType:
+          response.headers.get("content-type") ?? "application/octet-stream",
+        contentDisposition:
+          response.headers.get("content-disposition") ?? undefined,
+        contentLength: contentLength ? Number(contentLength) : undefined,
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error ? error.message : "Erro de conexão com gateway",
+    };
+  }
+}
+
+function parseGatewayError(text: string): { message?: string; payload?: { message?: string } } | null {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as {
+      message?: string;
+      payload?: { message?: string };
+    };
+  } catch {
+    return {
+      message: text,
+    };
+  }
 }
 
 export function sendCaptureInput(
