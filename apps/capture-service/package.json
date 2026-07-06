@@ -7,6 +7,7 @@
     "build": "nest build",
     "start": "nest start",
     "start:prod": "node dist/main",
+    "test": "jest",
     "lint": "eslint \"src/**/*.ts\" --ignore-pattern \"src/generated/**\"",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init"
@@ -26,6 +27,7 @@
     "dotenv": "^17.2.3",
     "next": "^9.3.3",
     "pg": "^8.16.3",
+    "playwright": "^1.61.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

@@ -2,15 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Camera,
-  CheckCircle2,
-  ExternalLink,
-  Globe2,
-  Loader2,
-  ShieldCheck,
-  Video,
-} from "lucide-react";
+import { ArrowRight, Globe2, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -24,189 +16,94 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useUserCreditBalance } from "@/components/veridit/credit-balance";
-import { EvidencePreview } from "@/components/veridit/evidence-preview";
-import { Timeline } from "@/components/veridit/timeline";
 import { getAuthSession } from "@/lib/auth-session";
-import { startMockCapture } from "@/lib/gateway";
-import {
-  captureChecklist,
-  captureTypes,
-  chainOfCustody,
-} from "@/lib/mock-data";
+import { startCapture } from "@/lib/gateway";
 
 export function CaptureClient() {
   const router = useRouter();
   const { credits, loading: creditsLoading } = useUserCreditBalance();
-  const [captureType, setCaptureType] = useState<"video" | "screenshot">(
-    "video",
-  );
-  const [url, setUrl] = useState("https://exemplo-processo.jus.br/detalhes");
-  const [includeScroll, setIncludeScroll] = useState(true);
+  const [url, setUrl] = useState("");
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPending(true);
+
+    const normalizedUrl = url.trim();
+
+    if (!normalizedUrl) {
+      toast.error("Informe o link que deve ser registrado.");
+      return;
+    }
 
     const session = getAuthSession();
 
     if (!session) {
-      setPending(false);
       toast.error("Sessão expirada. Faça login novamente.");
       return;
     }
 
-    const result = await startMockCapture({
+    setPending(true);
+
+    const result = await startCapture({
       userId: session.user.id,
-      title:
-        captureType === "video" ? "Gravação de Navegação" : "Captura de Tela",
-      siteUrl: url,
+      siteUrl: normalizedUrl,
     });
 
     setPending(false);
 
-    if (result.ok) {
-      toast.success("Captura registrada no serviço.");
-    } else {
-      toast.warning(
-        "Captura registrada localmente. API Gateway indisponível.",
-        {
-          description: result.message,
-        },
-      );
+    if (!result.ok) {
+      toast.error("Não foi possível iniciar o registro.", {
+        description: result.message,
+      });
+      return;
     }
 
-    router.push("/captura/concluida");
+    toast.success("Sessão de captura iniciada.");
+    router.push(`/captura/${result.data.id}`);
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,640px)_1fr]">
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,680px)_1fr]">
       <Card className="premium-card rounded-2xl">
         <CardHeader>
-          <CardTitle>Configuração da evidência</CardTitle>
+          <CardTitle>Link do conteúdo</CardTitle>
           <CardDescription>
-            Defina fonte, modalidade e parâmetros técnicos antes do registro.
+            Informe a página que será aberta em um navegador controlado para o
+            registro.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} id="capture-form">
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="siteUrl">URL do Site</FieldLabel>
+                <FieldLabel htmlFor="siteUrl">URL do site</FieldLabel>
                 <Input
                   id="siteUrl"
                   name="siteUrl"
                   type="url"
+                  inputMode="url"
+                  placeholder="https://exemplo.com/pagina"
                   value={url}
                   onChange={(event) => setUrl(event.target.value)}
+                  autoComplete="url"
                   required
                 />
                 <FieldDescription>
-                  A URL será gravada no relatório e na trilha de custódia.
+                  A navegação, os prints e o vídeo serão vinculados a esse
+                  registro.
                 </FieldDescription>
               </Field>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel>Tipo de Captura</FieldLabel>
-                  <ToggleGroup
-                    type="single"
-                    value={captureType}
-                    onValueChange={(value) => {
-                      if (value === "video" || value === "screenshot") {
-                        setCaptureType(value);
-                      }
-                    }}
-                    className="grid grid-cols-2"
-                  >
-                    {captureTypes.map((type) => {
-                      const Icon = type.icon;
-                      return (
-                        <ToggleGroupItem
-                          key={type.value}
-                          value={type.value}
-                          className="h-11 gap-2"
-                          aria-label={type.label}
-                        >
-                          <Icon aria-hidden="true" />
-                          {type.label}
-                        </ToggleGroupItem>
-                      );
-                    })}
-                  </ToggleGroup>
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="capture-profile">
-                    Perfil técnico
-                  </FieldLabel>
-                  <Select defaultValue="legal">
-                    <SelectTrigger id="capture-profile" className="w-full">
-                      <SelectValue placeholder="Perfil técnico" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="legal">Jurídico completo</SelectItem>
-                      <SelectItem value="fast">Registro rápido</SelectItem>
-                      <SelectItem value="audit">Auditoria detalhada</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </div>
-
-              <div className="flex items-center justify-between gap-4 rounded-xl border bg-background/80 p-4">
-                <div>
-                  <FieldLabel htmlFor="include-scroll">
-                    Capturar rolagem e metadados
-                  </FieldLabel>
-                  <FieldDescription>
-                    Mantém contexto de navegação para relatório mais completo.
-                  </FieldDescription>
-                </div>
-                <Switch
-                  id="include-scroll"
-                  checked={includeScroll}
-                  onCheckedChange={setIncludeScroll}
-                  aria-label="Capturar rolagem e metadados"
-                />
-              </div>
             </FieldGroup>
           </form>
         </CardContent>
-        <CardFooter className="grid gap-4">
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium">Preparação técnica</span>
-              <span className="text-muted-foreground">
-                {pending ? "78%" : "Pronto"}
-              </span>
-            </div>
-            <Progress value={pending ? 78 : 100} className="h-2" />
-          </div>
+        <CardFooter>
           <Button
             type="submit"
             form="capture-form"
@@ -219,12 +116,10 @@ export function CaptureClient() {
                 className="animate-spin"
                 aria-hidden="true"
               />
-            ) : captureType === "video" ? (
-              <Video data-icon="inline-start" aria-hidden="true" />
             ) : (
-              <Camera data-icon="inline-start" aria-hidden="true" />
+              <ArrowRight data-icon="inline-start" aria-hidden="true" />
             )}
-            Iniciar registro verificável
+            Abrir navegador de captura
           </Button>
         </CardFooter>
       </Card>
@@ -232,99 +127,45 @@ export function CaptureClient() {
       <div className="grid gap-6">
         <Alert className="border-[color:var(--evidence)]/20 bg-teal-50">
           <ShieldCheck aria-hidden="true" />
-          <AlertTitle>Saldo e cadeia de custódia prontos</AlertTitle>
+          <AlertTitle>Registro navegável</AlertTitle>
           <AlertDescription>
             Saldo atual:{" "}
             {creditsLoading && credits === null ? "..." : (credits ?? 0)}{" "}
-            créditos. Cada captura consome 1 crédito e gera relatório com hash.
+            créditos. A próxima tela abre o conteúdo em um navegador isolado com
+            ações de print e vídeo.
           </AlertDescription>
         </Alert>
 
         <Card className="premium-card rounded-2xl">
-          <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle>Pré-visualização</CardTitle>
-              <CardDescription>
-                Composição aproximada do registro antes da captura.
-              </CardDescription>
-            </div>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button type="button" variant="outline">
-                  <ExternalLink data-icon="inline-start" aria-hidden="true" />
-                  Abrir preview
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl">
-                <DialogHeader>
-                  <DialogTitle>Preview da evidência</DialogTitle>
-                  <DialogDescription>
-                    Visual prévio do conteúdo que será registrado.
-                  </DialogDescription>
-                </DialogHeader>
-                <EvidencePreview
-                  title="Prévia da captura"
-                  url={url}
-                  kind={captureType}
-                />
-              </DialogContent>
-            </Dialog>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe2 className="text-[color:var(--evidence)]" />
+              Como a sessão abre
+            </CardTitle>
+            <CardDescription>
+              O conteúdo aparece dentro do Veridit, mas a navegação acontece no
+              browser controlado pelo serviço de captura.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <EvidencePreview
-              title="Prévia da captura"
-              url={url}
-              kind={captureType}
-            />
+            <dl className="grid gap-4 text-sm">
+              <div>
+                <dt className="font-medium">Interação</dt>
+                <dd className="mt-1 text-muted-foreground">
+                  Cliques, teclado e rolagem são enviados para o navegador da
+                  sessão.
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium">Evidências</dt>
+                <dd className="mt-1 text-muted-foreground">
+                  Os botões laterais permitem gravar vídeo, tirar print do
+                  conteúdo e finalizar o registro.
+                </dd>
+              </div>
+            </dl>
           </CardContent>
         </Card>
-
-        <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-          <Card className="premium-card rounded-2xl">
-            <CardHeader>
-              <CardTitle>Checklist técnico</CardTitle>
-              <CardDescription>
-                Critérios aplicados no fluxo de registro.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ul className="grid gap-3">
-                {captureChecklist.map((item) => (
-                  <li key={item} className="flex items-start gap-3 text-sm">
-                    <CheckCircle2
-                      className="mt-0.5 text-[color:var(--success)]"
-                      aria-hidden="true"
-                    />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card className="premium-card rounded-2xl">
-            <CardHeader>
-              <CardTitle>Etapas do registro</CardTitle>
-              <CardDescription>
-                Fluxo documental esperado ao concluir.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Timeline
-                compact
-                items={[
-                  {
-                    title: "URL confirmada",
-                    description: "Fonte e perfil técnico ficam registrados.",
-                    time: "1",
-                    icon: Globe2,
-                  },
-                  ...chainOfCustody,
-                ]}
-              />
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );

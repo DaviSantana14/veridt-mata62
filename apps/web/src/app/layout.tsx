@@ -15,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className="h-full">
+    <html lang="pt-BR" className="h-full" data-scroll-behavior="smooth">
       <body className="flex min-h-full flex-col">
         <TooltipProvider delayDuration={180}>{children}</TooltipProvider>
         <Toaster richColors position="top-right" />

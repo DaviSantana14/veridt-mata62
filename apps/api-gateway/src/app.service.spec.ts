@@ -1,11 +1,19 @@
 import { BadGatewayException, HttpException } from '@nestjs/common';
 import type {
+  BrowserInputRequest,
+  CaptureAssetResponse,
+  CaptureFrameResponse,
+  CaptureRecordDetailsResponse,
+  CaptureVideoStateResponse,
+  CompleteCaptureResponse,
   CreateCardPaymentRequest,
   CreateCardPaymentResponse,
   CreateCreditPurchaseRequest,
   CreateCreditPurchaseResponse,
   CreateEmbeddedCreditPurchaseResponse,
   SimulatePaymentResponse,
+  StartCaptureRequest,
+  StartCaptureSessionResponse,
   UserCreditBalanceResponse,
 } from '@veridit/contracts';
 import { AppService } from './app.service';
@@ -65,6 +73,87 @@ const creditBalanceResponse: UserCreditBalanceResponse = {
   userId: 'user-1',
   credits: 15,
   updatedAt: '2026-05-29T12:00:00.000Z',
+};
+
+const startCaptureBody: StartCaptureRequest = {
+  userId: 'user-1',
+  siteUrl: 'https://example.com',
+};
+
+const startCaptureResponse: StartCaptureSessionResponse = {
+  id: 'record-1',
+  userId: 'user-1',
+  title: 'Registro de conteudo',
+  status: 'STARTED',
+  siteUrl: 'https://example.com',
+  startedAt: '2026-07-05T12:00:00.000Z',
+  viewport: {
+    width: 1366,
+    height: 768,
+  },
+};
+
+const captureRecordDetailsResponse: CaptureRecordDetailsResponse = {
+  id: 'record-1',
+  userId: 'user-1',
+  title: 'Registro de conteudo',
+  status: 'STARTED',
+  siteUrl: 'https://example.com',
+  startedAt: '2026-07-05T12:00:00.000Z',
+  imageCount: 2,
+  videoCount: 1,
+};
+
+const captureFrameResponse: CaptureFrameResponse = {
+  recordId: 'record-1',
+  mimeType: 'image/jpeg',
+  imageBase64: 'base64-frame',
+  currentUrl: 'https://example.com',
+  capturedAt: '2026-07-05T12:00:00.000Z',
+  viewport: {
+    width: 1366,
+    height: 768,
+  },
+};
+
+const browserInputBody: BrowserInputRequest = {
+  type: 'wheel',
+  deltaX: 0,
+  deltaY: 240,
+};
+
+const navigateBody = {
+  siteUrl: 'https://www.ufba.br',
+};
+
+const navigateResponse = {
+  accepted: true,
+  currentUrl: 'https://www.ufba.br/',
+};
+
+const screenshotResponse: CaptureAssetResponse = {
+  id: 'asset-1',
+  recordId: 'record-1',
+  type: 'IMAGE',
+  fileName: 'screenshot.png',
+  fileSizeBytes: 1200,
+  createdAt: '2026-07-05T12:00:00.000Z',
+};
+
+const videoStateResponse: CaptureVideoStateResponse = {
+  recording: true,
+};
+
+const completeCaptureResponse: CompleteCaptureResponse = {
+  id: 'record-1',
+  userId: 'user-1',
+  title: 'Registro de conteudo',
+  siteUrl: 'https://example.com',
+  status: 'COMPLETED',
+  startedAt: '2026-07-05T12:00:00.000Z',
+  finishedAt: '2026-07-05T12:05:00.000Z',
+  imageCount: 1,
+  videoCount: 1,
 };
 
 function fetchResponse(status: number, payload: unknown): Response {
@@ -333,6 +422,187 @@ describe('Api Gateway AppService billing purchases', () => {
           },
         }),
       }),
+    );
+  });
+});
+
+describe('Api Gateway AppService capture records', () => {
+  let service: AppService;
+  let fetchMock: jest.SpiedFunction<typeof fetch>;
+
+  beforeEach(() => {
+    service = new AppService();
+    fetchMock = jest.spyOn(globalThis, 'fetch');
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('starts capture records through capture-service', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(201, startCaptureResponse));
+
+    const result = await service.startCapture(startCaptureBody);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:3103/records', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(startCaptureBody),
+    });
+    expect(result).toEqual(startCaptureResponse);
+  });
+
+  it('reads live capture frames through capture-service', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(200, captureFrameResponse));
+
+    const result = await service.getCaptureFrame('record-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3103/records/record-1/frame',
+      undefined,
+    );
+    expect(result).toEqual(captureFrameResponse);
+  });
+
+  it('reads capture record details through capture-service', async () => {
+    fetchMock.mockResolvedValue(
+      fetchResponse(200, captureRecordDetailsResponse),
+    );
+
+    const result = await service.getCaptureRecord('record-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3103/records/record-1',
+      undefined,
+    );
+    expect(result).toEqual(captureRecordDetailsResponse);
+  });
+
+  it('sends browser input through capture-service', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(202, { accepted: true }));
+
+    const result = await service.sendCaptureInput('record-1', browserInputBody);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3103/records/record-1/input',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(browserInputBody),
+      },
+    );
+    expect(result).toEqual({ accepted: true });
+  });
+
+  it('sends direct navigation through capture-service', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(202, navigateResponse));
+
+    const result = await service.navigateCapture('record-1', navigateBody);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3103/records/record-1/navigate',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(navigateBody),
+      },
+    );
+    expect(result).toEqual(navigateResponse);
+  });
+
+  it('creates screenshots through capture-service', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(201, screenshotResponse));
+
+    const result = await service.captureScreenshot('record-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3103/records/record-1/screenshots',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+    );
+    expect(result).toEqual(screenshotResponse);
+  });
+
+  it('starts and stops video through capture-service', async () => {
+    fetchMock
+      .mockResolvedValueOnce(fetchResponse(202, videoStateResponse))
+      .mockResolvedValueOnce(
+        fetchResponse(201, { ...videoStateResponse, recording: false }),
+      );
+
+    await expect(service.startCaptureVideo('record-1')).resolves.toEqual(
+      videoStateResponse,
+    );
+    await expect(service.stopCaptureVideo('record-1')).resolves.toEqual({
+      ...videoStateResponse,
+      recording: false,
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:3103/records/record-1/video/start',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:3103/records/record-1/video/stop',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+    );
+  });
+
+  it('completes capture records through capture-service', async () => {
+    fetchMock.mockResolvedValue(fetchResponse(200, completeCaptureResponse));
+
+    const result = await service.completeCapture('record-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3103/records/record-1/complete',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+    );
+    expect(result).toEqual(completeCaptureResponse);
+  });
+
+  it('preserves capture-service client errors', async () => {
+    const payload = {
+      statusCode: 409,
+      message: 'Sessao de captura nao esta ativa',
+    };
+
+    fetchMock.mockResolvedValue(fetchResponse(409, payload));
+
+    await expectHttpException(
+      service.getCaptureFrame('record-1'),
+      409,
+      payload,
     );
   });
 });

@@ -187,8 +187,21 @@ export interface CreditPurchaseCreatedEvent {
 
 export interface StartCaptureRequest {
   userId: string;
-  title: string;
+  title?: string;
   siteUrl: string;
+}
+
+export interface NavigateCaptureRequest {
+  siteUrl: string;
+}
+
+export type CaptureRecordStatus = "STARTED" | "COMPLETED" | "FAILED";
+
+export type CaptureAssetType = "IMAGE" | "VIDEO";
+
+export interface CaptureViewport {
+  width: number;
+  height: number;
 }
 
 export interface ContentRecordResponse {
@@ -196,9 +209,73 @@ export interface ContentRecordResponse {
   userId: string;
   title: string;
   siteUrl: string;
-  status: "STARTED" | "COMPLETED";
+  status: CaptureRecordStatus;
   startedAt: string;
   finishedAt?: string;
+}
+
+export interface CaptureRecordDetailsResponse extends ContentRecordResponse {
+  imageCount: number;
+  videoCount: number;
+}
+
+export interface StartCaptureSessionResponse extends ContentRecordResponse {
+  status: CaptureRecordStatus;
+  viewport: CaptureViewport;
+}
+
+export interface CaptureFrameResponse {
+  recordId: string;
+  mimeType: "image/jpeg";
+  imageBase64: string;
+  currentUrl: string;
+  capturedAt: string;
+  viewport: CaptureViewport;
+}
+
+export interface CaptureAssetResponse {
+  id: string;
+  recordId: string;
+  type: CaptureAssetType;
+  fileName: string;
+  fileSizeBytes?: number;
+  sourceUrl?: string;
+  createdAt: string;
+}
+
+export type BrowserInputRequest =
+  | { type: "click"; x: number; y: number }
+  | { type: "wheel"; deltaX: number; deltaY: number }
+  | {
+      type: "key";
+      key: string;
+      code?: string;
+      ctrlKey?: boolean;
+      shiftKey?: boolean;
+      altKey?: boolean;
+      metaKey?: boolean;
+    }
+  | { type: "text"; value: string };
+
+export interface BrowserInputResponse {
+  accepted: true;
+  currentUrl: string;
+}
+
+export interface NavigateCaptureResponse {
+  accepted: true;
+  currentUrl: string;
+}
+
+export interface CaptureVideoStateResponse {
+  recording: boolean;
+  asset?: CaptureAssetResponse;
+}
+
+export interface CompleteCaptureResponse extends ContentRecordResponse {
+  status: "COMPLETED";
+  imageCount: number;
+  videoCount: number;
 }
 
 export interface CaptureCompletedEvent {

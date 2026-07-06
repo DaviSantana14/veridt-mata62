@@ -14,14 +14,24 @@ import {
 import { LoginDto } from './dto/login.dto';
 import type {
   AuthResponse,
+  BrowserInputRequest,
+  BrowserInputResponse,
+  CaptureAssetResponse,
+  CaptureFrameResponse,
+  CaptureRecordDetailsResponse,
+  CaptureVideoStateResponse,
+  CompleteCaptureResponse,
   ContentRecordResponse,
   CreateCardPaymentResponse,
   CreateCreditPurchaseResponse,
   CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
   HealthResponse,
+  NavigateCaptureRequest,
+  NavigateCaptureResponse,
   PurchaseCreditsRequest,
   SimulatePaymentResponse,
+  StartCaptureSessionResponse,
   UserCreditBalanceResponse,
   UserResponse,
 } from '@veridit/contracts';
@@ -31,6 +41,7 @@ import { CreateCardPaymentDto } from './dto/create-card-payment.dto';
 import { CreateCreditPurchaseDto } from './dto/create-credit-purchase.dto';
 import { MockCaptureDto } from './dto/mock-capture.dto';
 import { MockPurchaseDto } from './dto/mock-purchase.dto';
+import { StartCaptureDto } from './dto/start-capture.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 
@@ -195,5 +206,70 @@ export class AppController {
     @Body() body: MockCaptureDto,
   ): Promise<ContentRecordResponse> {
     return this.appService.createMockCapture(body);
+  }
+
+  @Post('capture/records')
+  startCapture(
+    @Body() body: StartCaptureDto,
+  ): Promise<StartCaptureSessionResponse> {
+    return this.appService.startCapture(body);
+  }
+
+  @Get('capture/records/:recordId')
+  getCaptureRecord(
+    @Param('recordId') recordId: string,
+  ): Promise<CaptureRecordDetailsResponse> {
+    return this.appService.getCaptureRecord(recordId);
+  }
+
+  @Get('capture/records/:recordId/frame')
+  getCaptureFrame(
+    @Param('recordId') recordId: string,
+  ): Promise<CaptureFrameResponse> {
+    return this.appService.getCaptureFrame(recordId);
+  }
+
+  @Post('capture/records/:recordId/input')
+  sendCaptureInput(
+    @Param('recordId') recordId: string,
+    @Body() body: BrowserInputRequest,
+  ): Promise<BrowserInputResponse> {
+    return this.appService.sendCaptureInput(recordId, body);
+  }
+
+  @Post('capture/records/:recordId/navigate')
+  navigateCapture(
+    @Param('recordId') recordId: string,
+    @Body() body: NavigateCaptureRequest,
+  ): Promise<NavigateCaptureResponse> {
+    return this.appService.navigateCapture(recordId, body);
+  }
+
+  @Post('capture/records/:recordId/screenshots')
+  captureScreenshot(
+    @Param('recordId') recordId: string,
+  ): Promise<CaptureAssetResponse> {
+    return this.appService.captureScreenshot(recordId);
+  }
+
+  @Post('capture/records/:recordId/video/start')
+  startCaptureVideo(
+    @Param('recordId') recordId: string,
+  ): Promise<CaptureVideoStateResponse> {
+    return this.appService.startCaptureVideo(recordId);
+  }
+
+  @Post('capture/records/:recordId/video/stop')
+  stopCaptureVideo(
+    @Param('recordId') recordId: string,
+  ): Promise<CaptureVideoStateResponse> {
+    return this.appService.stopCaptureVideo(recordId);
+  }
+
+  @Post('capture/records/:recordId/complete')
+  completeCapture(
+    @Param('recordId') recordId: string,
+  ): Promise<CompleteCaptureResponse> {
+    return this.appService.completeCapture(recordId);
   }
 }
