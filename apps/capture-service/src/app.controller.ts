@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Res,
+  StreamableFile,
+} from '@nestjs/common';
 import type {
   BrowserInputRequest,
   BrowserInputResponse,
@@ -9,6 +17,7 @@ import type {
   CompleteCaptureResponse,
   ContentRecordResponse,
   HealthResponse,
+  ListCaptureAssetsResponse,
   ListCaptureRecordsResponse,
   NavigateCaptureRequest,
   NavigateCaptureResponse,
@@ -19,6 +28,11 @@ import { BrowserInputDto } from './dto/browser-input.dto';
 import { MockCaptureDto } from './dto/mock-capture.dto';
 import { NavigateCaptureDto } from './dto/navigate-capture.dto';
 import { StartCaptureDto } from './dto/start-capture.dto';
+
+interface HeaderResponse {
+  set(headers: Record<string, string>): void;
+  set(header: string, value: string): void;
+}
 
 @Controller()
 export class AppController {
@@ -48,6 +62,40 @@ export class AppController {
     @Param('recordId') recordId: string,
   ): Promise<CaptureRecordDetailsResponse> {
     return this.appService.getRecord(recordId);
+  }
+
+  @Get('records/:recordId/assets')
+  listAssets(
+    @Param('recordId') recordId: string,
+  ): Promise<ListCaptureAssetsResponse> {
+    return this.appService.listAssets(recordId);
+  }
+
+  @Get('records/:recordId/assets/:assetId/download')
+  async downloadAsset(
+    @Param('recordId') recordId: string,
+    @Param('assetId') assetId: string,
+    @Res({ passthrough: true }) response: HeaderResponse,
+  ): Promise<StreamableFile> {
+    const asset = await this.appService.getAssetDownload(recordId, assetId);
+
+    response.set({
+      'Content-Type': asset.contentType,
+      'Content-Disposition': this.getAttachmentHeader(asset.fileName),
+    });
+
+    if (asset.contentLength !== undefined) {
+      response.set('Content-Length', String(asset.contentLength));
+    }
+
+    return new StreamableFile(asset.stream);
+  }
+
+  private getAttachmentHeader(fileName: string): string {
+    const safeName = fileName.replace(/["\r\n]/g, '_');
+    const encodedName = encodeURIComponent(fileName);
+
+    return `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`;
   }
 
   @Get('users/:userId/records')

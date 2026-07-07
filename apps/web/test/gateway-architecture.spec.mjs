@@ -34,6 +34,14 @@ const recordDetailsPage = readProjectFile("src/app/registros/[id]/page.tsx");
 const recordReportPage = readProjectFile(
   "src/app/registros/[id]/relatorio/page.tsx",
 );
+const recordReportClient = readProjectFile(
+  "src/app/registros/[id]/relatorio/report-client.tsx",
+);
+const recordReportDocument = readProjectFile(
+  "src/components/veridit/report-document.tsx",
+);
+const recordZipBuilder = readProjectFile("src/lib/zip/build-record-zip.ts");
+const recordZipRoute = readProjectFile("src/app/api/records/[id]/zip/route.ts");
 const logoutButton = readProjectFile(
   "src/components/veridit/logout-button.tsx",
 );
@@ -233,7 +241,7 @@ assert.match(
 );
 assert.match(
   recordReportPage,
-  /href=\{getCaptureDetailHref\(record\.id\)\}/,
+  /href=\{getCaptureDetailHref\(report\.id\)\}/,
   "legacy report page back links must navigate through the shared detail route helper",
 );
 assert.match(
@@ -263,8 +271,53 @@ assert.match(
 );
 assert.doesNotMatch(
   recordDetailsPage,
-  /@\/lib\/mock-data|getRecordById|chainOfCustody|Baixar ZIP|Relatório/,
-  "record details page must not render mock-backed detail, report, zip, or custody content",
+  /@\/lib\/mock-data|getRecordById|chainOfCustody/,
+  "record details page must not render mock-backed detail or custody content",
+);
+assert.match(
+  recordDetailsPage,
+  /\/registros\/\$\{encodeURIComponent\(record\.id\)\}\/relatorio/,
+  "completed record details must link to the real report route",
+);
+assert.match(
+  recordDetailsPage,
+  /\/api\/records\/\$\{encodeURIComponent\(record\.id\)\}\/zip/,
+  "completed record details must link to the real ZIP route",
+);
+assert.match(
+  recordDetailsPage,
+  /isCompleted && hasAssets/,
+  "ZIP download action must require a completed record with captured assets",
+);
+assert.match(
+  recordReportPage,
+  /getCaptureRecord\(id\)[\s\S]*getUserProfile\(recordResult\.data\.userId\)[\s\S]*listCaptureAssets\(id\)[\s\S]*toRecordReportView\(/,
+  "report page must build reports from real gateway record, responsible user, and asset data",
+);
+assert.doesNotMatch(
+  `${recordReportPage}\n${recordReportClient}\n${recordReportDocument}\n${recordZipBuilder}\n${recordZipRoute}`,
+  /@\/lib\/mock-data|VeriditRecord|getRecordById|chainOfCustody|reportValidationItems|getAuthSession|mock-screenshot|screenshot\.txt|video\.txt/,
+  "report and ZIP flows must not use mock records, mock custody data, or placeholder files",
+);
+assert.match(
+  recordReportDocument,
+  /Informações do registro[\s\S]*Responsável[\s\S]*Imagens capturadas[\s\S]*Vídeos capturados[\s\S]*Arquivos gerados pelo sistema/,
+  "report document must render the real report sections",
+);
+assert.match(
+  recordZipRoute,
+  /downloadCaptureAssetBytes\(id, asset\.id\)/,
+  "ZIP route must download real asset bytes from the gateway",
+);
+assert.match(
+  recordZipBuilder,
+  /zip\.file\("metadata\.json"[\s\S]*`assets\/\$\{getUniqueFileName\(file\.asset\.fileName, usedFileNames\)\}`/,
+  "ZIP builder must include real metadata and captured asset files",
+);
+assert.doesNotMatch(
+  `${readProjectFile("package.json")}\n${readProjectFile("../../package-lock.json")}`,
+  /file-saver/,
+  "web package must not keep unused file-saver dependencies",
 );
 assert.doesNotMatch(
   `${profilePage}\n${profileClient}`,

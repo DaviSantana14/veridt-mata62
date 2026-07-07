@@ -1,4 +1,4 @@
-import { Archive, BadgeCheck, ShieldCheck } from "lucide-react";
+import { Archive, BadgeCheck, Camera, FileText, Video } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,13 +10,10 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { VeriditLogo } from "@/components/layout/veridit-logo";
-import { Timeline } from "@/components/veridit/timeline";
-import {
-  chainOfCustody,
-  currentUser,
-  reportValidationItems,
-  type VeriditRecord,
-} from "@/lib/mock-data";
+import type {
+  RecordReportAssetView,
+  RecordReportView,
+} from "@/lib/record-report-view";
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
@@ -27,38 +24,80 @@ function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function ReportDocument({ record }: { record: VeriditRecord }) {
+function AssetList({
+  assets,
+  emptyLabel,
+}: {
+  assets: RecordReportAssetView[];
+  emptyLabel: string;
+}) {
+  if (assets.length === 0) {
+    return (
+      <p className="rounded-xl border bg-background/70 p-4 text-sm text-muted-foreground">
+        {emptyLabel}
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      {assets.map((asset) => (
+        <div key={asset.id} className="rounded-xl border bg-background/70 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="break-all text-sm font-semibold">{asset.fileName}</p>
+            <Badge variant="outline">{asset.fileSizeLabel}</Badge>
+          </div>
+
+          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-muted-foreground">URL capturada</dt>
+              <dd className="break-words font-medium">{asset.sourceUrlLabel}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Gerado em</dt>
+              <dd className="font-medium">{asset.createdAtLabel}</dd>
+            </div>
+          </dl>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function ReportDocument({ report }: { report: RecordReportView }) {
   return (
     <Card className="document-paper overflow-hidden rounded-2xl border bg-card shadow-[0_24px_80px_rgb(15_23_42/0.10)]">
       <CardHeader className="border-b bg-card/95 p-6 text-center sm:p-8">
         <div className="mx-auto">
           <VeriditLogo className="pointer-events-none justify-center" />
         </div>
+
         <Badge className="mx-auto mt-4 rounded-full bg-[color:var(--success-soft)] text-[color:var(--success)]">
           <BadgeCheck aria-hidden="true" />
-          Documento verificável
+          Dados reais do registro
         </Badge>
-        <CardTitle className="mt-4 text-2xl">Relatório de Registro Digital</CardTitle>
+
+        <CardTitle className="mt-4 text-2xl">
+          Relatório de Registro Digital
+        </CardTitle>
+
         <CardDescription>
-          Veridit - captura, metadados e cadeia de custódia
+          Veridit - captura, metadados e arquivos gerados
         </CardDescription>
       </CardHeader>
 
       <CardContent className="grid gap-8 p-5 sm:p-8">
         <section>
           <h2 className="text-lg font-semibold">Informações do registro</h2>
+
           <dl className="mt-4 grid gap-3">
-            <Detail label="ID do Registro" value={record.id} />
-            <Detail label="Título" value={record.title} />
-            <Detail label="URL" value={record.url} />
-            <Detail label="Data de Criação" value={record.createdAt} />
-            <Detail label="Data de Conclusão" value={record.completedAt ?? "Em processamento"} />
-            <Detail
-              label="Tipo"
-              value={record.kind === "video" ? "Gravação de Navegação" : "Screenshot"}
-            />
-            <Detail label="Duração" value={record.duration ?? "Instantânea"} />
-            <Detail label="Tamanho" value={record.size ?? "Calculando"} />
+            <Detail label="ID do Registro" value={report.id} />
+            <Detail label="Título" value={report.title} />
+            <Detail label="URL" value={report.siteUrl} />
+            <Detail label="Status" value={report.statusLabel} />
+            <Detail label="Data de Criação" value={report.startedAtLabel} />
+            <Detail label="Data de Conclusão" value={report.finishedAtLabel} />
+            <Detail label="Duração" value={report.durationLabel} />
           </dl>
         </section>
 
@@ -66,39 +105,41 @@ export function ReportDocument({ record }: { record: VeriditRecord }) {
 
         <section>
           <h2 className="text-lg font-semibold">Responsável</h2>
+
           <dl className="mt-4 grid gap-3">
-            <Detail label="Nome" value={currentUser.name} />
-            <Detail label="E-mail" value={currentUser.email} />
-            <Detail label="CPF" value={currentUser.cpf} />
+            <Detail label="Nome" value={report.responsibleName} />
+            <Detail label="E-mail" value={report.responsibleEmail} />
+            <Detail label="CPF" value={report.responsibleCpf} />
+            <Detail label="ID do usuário" value={report.responsibleUserId} />
           </dl>
         </section>
 
         <Separator />
 
         <section>
-          <h2 className="text-lg font-semibold">Validação e integridade</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            {reportValidationItems.map((item) => {
-              const Icon = item.icon;
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+            <Camera className="text-primary" aria-hidden="true" />
+            Imagens capturadas
+          </h2>
 
-              return (
-                <div key={item.label} className="rounded-xl border bg-background/70 p-4">
-                  <Icon className="text-primary" aria-hidden="true" />
-                  <p className="mt-3 text-sm font-semibold">{item.label}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{item.value}</p>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-4 rounded-xl border bg-[#071526] p-4 text-white">
-            <p className="flex items-center gap-2 text-sm font-semibold">
-              <ShieldCheck className="text-[#8bb7ff]" aria-hidden="true" />
-              Hash de Integridade
-            </p>
-            <p className="mt-2 break-all font-mono text-xs leading-6 text-white/70">
-              {record.hash}
-            </p>
-          </div>
+          <AssetList
+            assets={report.imageAssets}
+            emptyLabel="Nenhuma imagem capturada para este registro."
+          />
+        </section>
+
+        <Separator />
+
+        <section>
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+            <Video className="text-primary" aria-hidden="true" />
+            Vídeos capturados
+          </h2>
+
+          <AssetList
+            assets={report.videoAssets}
+            emptyLabel="Nenhum vídeo capturado para este registro."
+          />
         </section>
 
         <Separator />
@@ -106,9 +147,31 @@ export function ReportDocument({ record }: { record: VeriditRecord }) {
         <section>
           <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
             <Archive className="text-primary" aria-hidden="true" />
-            Cadeia de custódia
+            Arquivos gerados pelo sistema
           </h2>
-          <Timeline items={chainOfCustody} compact />
+
+          <div className="grid gap-3">
+            <div className="rounded-xl border bg-background/70 p-4">
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <FileText className="text-primary" aria-hidden="true" />
+                metadata.json
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Metadados do registro, responsável e arquivos capturados.
+              </p>
+            </div>
+
+            {report.allAssets.map((asset) => (
+              <div key={asset.id} className="rounded-xl border bg-background/70 p-4">
+                <p className="break-all text-sm font-semibold">
+                  assets/{asset.fileName}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Arquivo original capturado pelo serviço de registro.
+                </p>
+              </div>
+            ))}
+          </div>
         </section>
       </CardContent>
     </Card>

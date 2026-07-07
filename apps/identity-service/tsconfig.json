@@ -20,5 +20,5 @@
     "strictBindCallApply": true,
     "noFallthroughCasesInSwitch": true
   },
-  "exclude": ["prisma.config.ts"]
+  "exclude": ["dist", "prisma.config.ts"]
 }

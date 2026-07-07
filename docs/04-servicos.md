@@ -23,6 +23,8 @@ Entrada HTTP para o frontend. Rotas atuais:
 - `GET /capture/health`
 - `POST /capture/records/mock`
 - `GET /capture/records/:recordId`
+- `GET /capture/records/:recordId/assets`
+- `GET /capture/records/:recordId/assets/:assetId/download`
 - `GET /capture/users/:userId/records`
 
 ## `apps/identity-service`
@@ -37,7 +39,7 @@ O saldo só é creditado quando o webhook Mercado Pago informa pagamento aprovad
 
 ## `apps/capture-service`
 
-Responsável por registros de conteúdo, sessões de captura e assets capturados. Também lista os registros realizados por usuário para atender o REQ 12 e fornece os metadados, status e contagens usados no detalhe do registro do REQ 13.
+Responsável por registros de conteúdo, sessões de captura e assets capturados. Também lista os registros realizados por usuário para atender o REQ 12, fornece os metadados, status e contagens usados no detalhe do registro do REQ 13, e expõe a lista/download dos assets reais usados no relatório e ZIP dos REQ 14 e 15.
 
 ## `apps/notification-service`
 

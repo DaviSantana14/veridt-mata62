@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, StreamableFile } from '@nestjs/common';
+import { Readable } from 'node:stream';
 import type {
   BrowserInputRequest,
   CaptureAssetResponse,
@@ -11,6 +12,7 @@ import type {
   CreateCreditPurchaseRequest,
   CreateCreditPurchaseResponse,
   CreateEmbeddedCreditPurchaseResponse,
+  ListCaptureAssetsResponse,
   ListCaptureRecordsResponse,
   SimulatePaymentResponse,
   StartCaptureRequest,
@@ -112,6 +114,20 @@ const listCaptureRecordsResponse: ListCaptureRecordsResponse = {
     {
       ...captureRecordDetailsResponse,
       details: 'Concluido com evidencias.',
+    },
+  ],
+};
+
+const listCaptureAssetsResponse: ListCaptureAssetsResponse = {
+  recordId: 'record-1',
+  assets: [
+    {
+      id: 'asset-1',
+      recordId: 'record-1',
+      type: 'IMAGE',
+      fileName: 'screenshot.png',
+      fileSizeBytes: 1200,
+      createdAt: '2026-07-05T12:00:00.000Z',
     },
   ],
 };
@@ -303,6 +319,8 @@ describe('Api Gateway AppController capture records', () => {
     startCapture: jest.Mock;
     getCaptureRecord: jest.Mock;
     listCaptureRecords: jest.Mock;
+    listCaptureAssets: jest.Mock;
+    downloadCaptureAsset: jest.Mock;
     getCaptureFrame: jest.Mock;
     sendCaptureInput: jest.Mock;
     navigateCapture: jest.Mock;
@@ -321,6 +339,14 @@ describe('Api Gateway AppController capture records', () => {
       listCaptureRecords: jest
         .fn()
         .mockResolvedValue(listCaptureRecordsResponse),
+      listCaptureAssets: jest.fn().mockResolvedValue(listCaptureAssetsResponse),
+      downloadCaptureAsset: jest.fn().mockResolvedValue({
+        stream: Readable.from(['asset-bytes']),
+        contentType: 'image/png',
+        contentDisposition:
+          'attachment; filename="screenshot.png"; filename*=UTF-8\'\'screenshot.png',
+        contentLength: '11',
+      }),
       getCaptureFrame: jest.fn().mockResolvedValue(captureFrameResponse),
       sendCaptureInput: jest.fn().mockResolvedValue({ accepted: true }),
       navigateCapture: jest.fn().mockResolvedValue(navigateResponse),
@@ -360,6 +386,38 @@ describe('Api Gateway AppController capture records', () => {
     );
 
     expect(appService.listCaptureRecords).toHaveBeenCalledWith('user-1');
+  });
+
+  it('proxies capture asset listing', async () => {
+    await expect(controller.listCaptureAssets('record-1')).resolves.toEqual(
+      listCaptureAssetsResponse,
+    );
+
+    expect(appService.listCaptureAssets).toHaveBeenCalledWith('record-1');
+  });
+
+  it('streams capture asset downloads with downstream headers', async () => {
+    const response = {
+      set: jest.fn(),
+    };
+
+    const result = await controller.downloadCaptureAsset(
+      'record-1',
+      'asset-1',
+      response as never,
+    );
+
+    expect(result).toBeInstanceOf(StreamableFile);
+    expect(appService.downloadCaptureAsset).toHaveBeenCalledWith(
+      'record-1',
+      'asset-1',
+    );
+    expect(response.set).toHaveBeenCalledWith({
+      'Content-Type': 'image/png',
+      'Content-Disposition':
+        'attachment; filename="screenshot.png"; filename*=UTF-8\'\'screenshot.png',
+    });
+    expect(response.set).toHaveBeenCalledWith('Content-Length', '11');
   });
 
   it('proxies browser input commands', async () => {

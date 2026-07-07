@@ -10,6 +10,8 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
 import { LoginDto } from './dto/login.dto';
 import type {
@@ -27,6 +29,7 @@ import type {
   CreateEmbeddedCreditPurchaseResponse,
   CreditPackageResponse,
   HealthResponse,
+  ListCaptureAssetsResponse,
   ListCaptureRecordsResponse,
   NavigateCaptureRequest,
   NavigateCaptureResponse,
@@ -51,6 +54,11 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+
+interface HeaderResponse {
+  set(headers: Record<string, string>): void;
+  set(header: string, value: string): void;
+}
 
 @Controller()
 export class AppController {
@@ -228,6 +236,37 @@ export class AppController {
     @Param('userId') userId: string,
   ): Promise<ListCaptureRecordsResponse> {
     return this.appService.listCaptureRecords(userId);
+  }
+
+  @Get('capture/records/:recordId/assets')
+  listCaptureAssets(
+    @Param('recordId') recordId: string,
+  ): Promise<ListCaptureAssetsResponse> {
+    return this.appService.listCaptureAssets(recordId);
+  }
+
+  @Get('capture/records/:recordId/assets/:assetId/download')
+  async downloadCaptureAsset(
+    @Param('recordId') recordId: string,
+    @Param('assetId') assetId: string,
+    @Res({ passthrough: true }) response: HeaderResponse,
+  ): Promise<StreamableFile> {
+    const asset = await this.appService.downloadCaptureAsset(recordId, assetId);
+    const headers: Record<string, string> = {
+      'Content-Type': asset.contentType,
+    };
+
+    if (asset.contentDisposition) {
+      headers['Content-Disposition'] = asset.contentDisposition;
+    }
+
+    response.set(headers);
+
+    if (asset.contentLength) {
+      response.set('Content-Length', asset.contentLength);
+    }
+
+    return new StreamableFile(asset.stream);
   }
 
   @Get('capture/records/:recordId/frame')

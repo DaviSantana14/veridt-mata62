@@ -44,6 +44,8 @@ function createPrismaMock() {
     captureAsset: {
       create: jest.fn(),
       count: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
     },
   };
 }
@@ -66,6 +68,7 @@ function createStorageMock() {
   return {
     createAssetPath: jest.fn(),
     getFileSize: jest.fn(),
+    openAsset: jest.fn(),
   };
 }
 
@@ -317,6 +320,130 @@ describe('AppService capture records', () => {
       orderBy: { startedAt: 'desc' },
       include: { assets: { select: { type: true } } },
     });
+  });
+
+  it('lists capture assets for a record ordered by creation date', async () => {
+    prisma.contentRecord.findUnique.mockResolvedValue(makeRecord());
+    prisma.captureAsset.findMany.mockResolvedValue([
+      makeAsset(),
+      makeAsset({
+        id: 'asset-2',
+        type: 'VIDEO',
+        fileName: 'video.webm',
+        fileSizeBytes: 456,
+        sourceUrl: null,
+        createdAt: new Date('2026-01-02T03:06:07.000Z'),
+      }),
+    ]);
+
+    await expect(service.listAssets('record-1')).resolves.toEqual({
+      recordId: 'record-1',
+      assets: [
+        {
+          id: 'asset-1',
+          recordId: 'record-1',
+          type: 'IMAGE',
+          fileName: 'screenshot.png',
+          fileSizeBytes: 123,
+          sourceUrl: 'https://example.com/current',
+          createdAt: '2026-01-02T03:05:06.000Z',
+        },
+        {
+          id: 'asset-2',
+          recordId: 'record-1',
+          type: 'VIDEO',
+          fileName: 'video.webm',
+          fileSizeBytes: 456,
+          sourceUrl: undefined,
+          createdAt: '2026-01-02T03:06:07.000Z',
+        },
+      ],
+    });
+    expect(prisma.captureAsset.findMany).toHaveBeenCalledWith({
+      where: { recordId: 'record-1' },
+      orderBy: { createdAt: 'asc' },
+    });
+  });
+
+  it('opens a capture asset download for the requested record', async () => {
+    const stream = {} as NodeJS.ReadableStream;
+
+    prisma.contentRecord.findUnique.mockResolvedValue(makeRecord());
+    prisma.captureAsset.findUnique.mockResolvedValue(makeAsset());
+    storage.openAsset.mockResolvedValue({
+      stream,
+      size: 123,
+    });
+
+    await expect(
+      service.getAssetDownload('record-1', 'asset-1'),
+    ).resolves.toEqual({
+      stream,
+      fileName: 'screenshot.png',
+      contentType: 'image/png',
+      contentLength: 123,
+    });
+    expect(prisma.captureAsset.findUnique).toHaveBeenCalledWith({
+      where: { id: 'asset-1' },
+    });
+    expect(storage.openAsset).toHaveBeenCalledWith(
+      'record-1',
+      'screenshot.png',
+    );
+  });
+
+  it('opens video capture asset downloads with the video content type', async () => {
+    const stream = {} as NodeJS.ReadableStream;
+
+    prisma.contentRecord.findUnique.mockResolvedValue(makeRecord());
+    prisma.captureAsset.findUnique.mockResolvedValue(
+      makeAsset({
+        type: 'VIDEO',
+        fileName: 'video.webm',
+      }),
+    );
+    storage.openAsset.mockResolvedValue({
+      stream,
+      size: 456,
+    });
+
+    await expect(
+      service.getAssetDownload('record-1', 'asset-1'),
+    ).resolves.toMatchObject({
+      fileName: 'video.webm',
+      contentType: 'video/webm',
+      contentLength: 456,
+    });
+  });
+
+  it('throws not found when listing assets for a missing record', async () => {
+    prisma.contentRecord.findUnique.mockResolvedValue(null);
+
+    await expect(service.listAssets('missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(prisma.captureAsset.findMany).not.toHaveBeenCalled();
+  });
+
+  it('throws not found when downloading assets for a missing record', async () => {
+    prisma.contentRecord.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.getAssetDownload('missing', 'asset-1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.captureAsset.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejects downloads for assets from another record', async () => {
+    prisma.contentRecord.findUnique.mockResolvedValue(makeRecord());
+    prisma.captureAsset.findUnique.mockResolvedValue(
+      makeAsset({ recordId: 'other-record' }),
+    );
+
+    await expect(
+      service.getAssetDownload('record-1', 'asset-1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(storage.openAsset).not.toHaveBeenCalled();
   });
 
   it('throws not found for missing records', async () => {

@@ -1,3 +1,4 @@
+import { StreamableFile } from '@nestjs/common';
 import type {
   BrowserInputResponse,
   CaptureAssetResponse,
@@ -7,6 +8,7 @@ import type {
   CompleteCaptureResponse,
   ContentRecordResponse,
   HealthResponse,
+  ListCaptureAssetsResponse,
   ListCaptureRecordsResponse,
   NavigateCaptureResponse,
   StartCaptureSessionResponse,
@@ -51,6 +53,21 @@ const listRecordsResponse: ListCaptureRecordsResponse = {
       details: 'Concluido com evidencias.',
       imageCount: 1,
       videoCount: 0,
+    },
+  ],
+};
+
+const listAssetsResponse: ListCaptureAssetsResponse = {
+  recordId: 'record-1',
+  assets: [
+    {
+      id: 'asset-1',
+      recordId: 'record-1',
+      type: 'IMAGE',
+      fileName: 'screenshot.png',
+      fileSizeBytes: 123,
+      sourceUrl: 'https://example.com/current',
+      createdAt: '2026-01-02T03:05:06.000Z',
     },
   ],
 };
@@ -114,6 +131,8 @@ describe('Capture AppController', () => {
     createMockRecord: jest.Mock;
     startRecord: jest.Mock;
     getRecord: jest.Mock;
+    listAssets: jest.Mock;
+    getAssetDownload: jest.Mock;
     listRecordsForUser: jest.Mock;
     getFrame: jest.Mock;
     sendInput: jest.Mock;
@@ -130,6 +149,13 @@ describe('Capture AppController', () => {
       createMockRecord: jest.fn().mockResolvedValue(contentRecordResponse),
       startRecord: jest.fn().mockResolvedValue(startResponse),
       getRecord: jest.fn().mockResolvedValue(recordDetailsResponse),
+      listAssets: jest.fn().mockResolvedValue(listAssetsResponse),
+      getAssetDownload: jest.fn().mockResolvedValue({
+        stream: {} as NodeJS.ReadableStream,
+        fileName: 'screenshot.png',
+        contentType: 'image/png',
+        contentLength: 123,
+      }),
       listRecordsForUser: jest.fn().mockResolvedValue(listRecordsResponse),
       getFrame: jest.fn().mockResolvedValue(frameResponse),
       sendInput: jest.fn().mockResolvedValue(inputResponse),
@@ -169,6 +195,9 @@ describe('Capture AppController', () => {
     await expect(controller.getRecord('record-1')).resolves.toEqual(
       recordDetailsResponse,
     );
+    await expect(controller.listAssets('record-1')).resolves.toEqual(
+      listAssetsResponse,
+    );
     await expect(controller.getFrame('record-1')).resolves.toEqual(
       frameResponse,
     );
@@ -188,6 +217,7 @@ describe('Capture AppController', () => {
 
     expect(appService.startRecord).toHaveBeenCalledWith(body);
     expect(appService.getRecord).toHaveBeenCalledWith('record-1');
+    expect(appService.listAssets).toHaveBeenCalledWith('record-1');
     expect(appService.getFrame).toHaveBeenCalledWith('record-1');
     expect(appService.captureScreenshot).toHaveBeenCalledWith('record-1');
     expect(appService.startVideo).toHaveBeenCalledWith('record-1');
@@ -201,6 +231,30 @@ describe('Capture AppController', () => {
     );
 
     expect(appService.listRecordsForUser).toHaveBeenCalledWith('user-1');
+  });
+
+  it('streams capture asset downloads with download headers', async () => {
+    const response = {
+      set: jest.fn(),
+    };
+
+    const result = await controller.downloadAsset(
+      'record-1',
+      'asset-1',
+      response as never,
+    );
+
+    expect(result).toBeInstanceOf(StreamableFile);
+    expect(appService.getAssetDownload).toHaveBeenCalledWith(
+      'record-1',
+      'asset-1',
+    );
+    expect(response.set).toHaveBeenCalledWith({
+      'Content-Type': 'image/png',
+      'Content-Disposition':
+        'attachment; filename="screenshot.png"; filename*=UTF-8\'\'screenshot.png',
+    });
+    expect(response.set).toHaveBeenCalledWith('Content-Length', '123');
   });
 
   it('delegates browser input to the service', async () => {
