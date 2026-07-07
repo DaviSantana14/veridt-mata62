@@ -30,17 +30,22 @@ Recuperação de senha:
 api-gateway -> identity-service -> RabbitMQ -> notification-service
 ```
 
-Compra mock:
+Compra de creditos paga:
 
 ```text
-api-gateway -> billing-service -> RabbitMQ -> notification-service
+api-gateway -> billing-service -> Mercado Pago/webhook -> RabbitMQ -> notification-service
 ```
 
-Captura mock:
+Captura concluida:
 
 ```text
-api-gateway -> capture-service -> RabbitMQ -> report-service
+api-gateway -> capture-service -> RabbitMQ -> notification-service
+                                      -> report-service
 ```
+
+O fluxo de compra tambem pode ser concluido pela rota de simulacao em desenvolvimento. O evento publicado e o mesmo: `billing.credit_purchased`.
+
+Os dados exibidos ao usuario nao devem depender de eventos. Listagem, detalhe, relatorio e ZIP consultam dados sincronamente pelo API Gateway. RabbitMQ fica reservado para efeitos colaterais, como email e processamento assincrono.
 
 ## Como criar novo evento
 

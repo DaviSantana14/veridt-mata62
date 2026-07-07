@@ -31,6 +31,50 @@ Copy-Item apps/web/.env.example apps/web/.env.local
 
 Esses arquivos `.env` ficam fora do Git. Ajuste os valores quando trocar portas, bancos ou integrações externas.
 
+## Captura e preview ao vivo
+
+O fluxo de captura usa Playwright no `capture-service`. O preview ao vivo passa por WebSocket:
+
+```text
+web -> api-gateway -> capture-service
+```
+
+Para desenvolvimento local, mantenha o browser visivel se quiser acompanhar a navegacao:
+
+```env
+# apps/capture-service/.env
+CAPTURE_BROWSER_HEADLESS=false
+CAPTURE_VIEWPORT_WIDTH=1366
+CAPTURE_VIEWPORT_HEIGHT=768
+CAPTURE_FRAME_QUALITY=72
+CAPTURE_PREVIEW_FPS=15
+CAPTURE_PREVIEW_QUALITY=80
+CAPTURE_PREVIEW_MAX_WIDTH=1366
+CAPTURE_PREVIEW_MAX_HEIGHT=768
+CAPTURE_PREVIEW_METADATA_INTERVAL_MS=1000
+```
+
+Os exemplos do repositorio usam qualidade menor por padrao para reduzir trafego local. Para melhorar nitidez, aumente `CAPTURE_PREVIEW_QUALITY`, `CAPTURE_PREVIEW_MAX_WIDTH` e `CAPTURE_PREVIEW_MAX_HEIGHT`. Reinicie o `capture-service` depois de alterar esses valores.
+
+O gateway precisa conhecer a URL HTTP e WebSocket do `capture-service`:
+
+```env
+# apps/api-gateway/.env
+CAPTURE_SERVICE_URL=http://localhost:3103
+CAPTURE_SERVICE_WS_URL=ws://localhost:3103
+```
+
+O frontend deve continuar apontando apenas para o API Gateway:
+
+```env
+# apps/web/.env.local
+API_GATEWAY_URL=http://localhost:3001
+NEXT_PUBLIC_API_GATEWAY_URL=http://localhost:3001
+NEXT_PUBLIC_API_GATEWAY_WS_URL=ws://localhost:3001
+```
+
+Se `NEXT_PUBLIC_API_GATEWAY_WS_URL` nao estiver definido, o frontend deriva a URL WebSocket a partir de `NEXT_PUBLIC_API_GATEWAY_URL`.
+
 ## Email local com Gmail
 
 O `notification-service` envia emails por SMTP usando Gmail. Para testar localmente:

@@ -1,8 +1,22 @@
 # Veridit
 
-Boilerplate colaborativo para o trabalho academico Veridit.
+Sistema academico para registrar evidencias de conteudo na internet, conforme os requisitos em `docs/veridit-req.pdf`.
 
-Este repositorio usa Turborepo com npm workspaces, Next.js no frontend, NestJS no API Gateway e nos microsservicos, Prisma ORM com PostgreSQL e RabbitMQ para eventos assíncronos.
+O monorepo usa Turborepo com npm workspaces, Next.js no frontend, NestJS no API Gateway e nos microsservicos, Prisma ORM com PostgreSQL, RabbitMQ para eventos assincronos, Playwright para captura e Mercado Pago para pagamento.
+
+## Estado atual
+
+Os requisitos REQ 01 a REQ 15 estao implementados no fluxo principal:
+
+- cadastro, login, logout e recuperacao de senha;
+- compra e pagamento de creditos;
+- emails transacionais;
+- captura de conteudo com screenshot, video e preview ao vivo;
+- listagem e detalhe de registros;
+- relatorio em PDF;
+- ZIP com assets reais do registro.
+
+Rotas mock ainda existem para demos locais e testes legados, mas nao sao a fonte de verdade dos requisitos.
 
 ## Primeiros passos
 
@@ -26,10 +40,10 @@ npm run dev
 - `npm run dev`: compila o pacote de contratos e inicia os apps em modo desenvolvimento.
 - `npm run build`: compila todos os workspaces.
 - `npm run lint`: roda lint nos workspaces.
-- `npm run prisma:generate`: gera os Prisma Clients dos serviços.
-- `npm run prisma:migrate`: executa as migrations iniciais dos serviços com banco.
+- `npm run prisma:generate`: gera os Prisma Clients dos servicos.
+- `npm run prisma:migrate`: executa as migrations iniciais dos servicos com banco.
 
-## Documentação
+## Documentacao
 
 Leia os arquivos em [`docs`](docs) antes de implementar novas funcionalidades:
 

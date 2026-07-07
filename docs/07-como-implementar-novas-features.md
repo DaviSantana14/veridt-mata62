@@ -2,50 +2,75 @@
 
 ## Passo recomendado
 
-1. Identifique qual serviço é dono da regra.
-2. Crie ou ajuste DTOs no serviço.
+1. Identifique qual servico e dono da regra.
+2. Crie ou ajuste DTOs no servico.
 3. Se o contrato for compartilhado, atualize `packages/contracts`.
-4. Se precisar persistir dados, altere somente o Prisma schema do serviço dono.
-5. Adicione a rota HTTP no serviço.
+4. Se precisar persistir dados, altere somente o Prisma schema do servico dono.
+5. Adicione a rota HTTP ou WebSocket no servico dono.
 6. Exponha a rota pelo API Gateway se ela for usada pelo frontend.
-7. Use RabbitMQ apenas para efeitos assíncronos.
-8. Rode lint, build, Prisma generate e migrations.
+7. Atualize o helper do frontend que chama o gateway.
+8. Use RabbitMQ apenas para efeitos assincronos.
+9. Atualize `.env.example` quando adicionar variavel de ambiente.
+10. Atualize os docs afetados.
+11. Rode as verificacoes relevantes.
 
-## Exemplo: cadastro com senha
+## Ao alterar fluxo usado pelo frontend
 
-Serviço dono: `identity-service`.
+O frontend deve chamar apenas o API Gateway.
 
-Alterações esperadas:
+Ordem pratica:
 
-- adicionar `password` ao DTO de entrada;
-- gerar hash da senha no service;
-- preencher `passwordHash`;
-- criar rota de login;
-- retornar token JWT depois de configurar autenticação.
+1. Ajuste o servico dono.
+2. Ajuste ou crie testes no servico dono.
+3. Exponha a rota no API Gateway.
+4. Ajuste tipos/contratos compartilhados, se existirem.
+5. Ajuste `apps/web/src/lib/gateway.ts` ou o helper equivalente.
+6. Ajuste a tela ou server route do Next.js.
+7. Rode o teste de arquitetura do frontend para garantir que nenhuma chamada direta a microsservico apareceu.
 
-O `billing-service` não deve consultar a tabela de usuários. Ele deve receber `userId` pelo gateway ou por evento.
+## Ao alterar captura
 
-## Exemplo: compra real de créditos
+Servico dono: `capture-service`.
 
-Serviço dono: `billing-service`.
+Cuidados:
 
-Alterações esperadas:
+- preserve a fonte de verdade no banco e nos assets reais do registro;
+- mantenha o browser falando somente com o API Gateway;
+- se alterar preview, atualize `CAPTURE_PREVIEW_*` em `.env.example` e em `docs/02-como-rodar.md`;
+- se alterar formato de assets, confira detalhes, relatorio e ZIP;
+- se alterar conclusao da captura, confira o evento `capture.completed` e o email de notificacao.
 
-- criar uma interface para provedor de pagamento;
-- trocar o adapter mock por Mercado Pago ou Pix;
-- manter o evento `billing.credit_purchased` para notificação;
-- persistir o status real da compra.
+## Ao alterar pagamento
 
-## Exemplo: captura real
+Servico dono: `billing-service`.
 
-Serviço dono: `capture-service`.
+Cuidados:
 
-Alterações esperadas:
+- mantenha idempotencia no webhook;
+- nao credite saldo antes de pagamento aprovado;
+- mantenha `external_reference` apontando para a compra interna;
+- publique `billing.credit_purchased` somente quando o saldo for efetivamente creditado;
+- rotas mock podem existir para demo local, mas nao devem virar fonte de verdade do fluxo principal.
 
-- criar uma interface para captura de tela/vídeo;
-- implementar adapter real depois;
-- persistir assets capturados;
-- publicar `capture.completed` quando a captura terminar.
+## Ao alterar relatorio ou ZIP
+
+Os REQ 14 e REQ 15 devem usar dados reais do registro.
+
+Checklist:
+
+- buscar registro pelo API Gateway;
+- buscar usuario responsavel por `userId`;
+- usar assets reais do `capture-service`;
+- tratar registro sem assets de forma clara;
+- evitar dados mockados em PDF, ZIP ou tela.
+
+## Ao alterar eventos
+
+1. Declare o nome do evento e o tipo do payload em `packages/contracts`.
+2. Crie ou ajuste o publisher no servico produtor.
+3. Crie ou ajuste o handler com `@EventPattern(...)` no consumidor.
+4. Garanta que o evento represente um fato ja persistido.
+5. Nao use evento para substituir consulta sincrona necessaria para resposta ao usuario.
 
 ## Antes de abrir PR ou entregar parte do trabalho
 
