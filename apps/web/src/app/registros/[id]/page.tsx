@@ -1,9 +1,11 @@
 import Link from "next/link";
 import {
   Camera,
+  Download,
   FileVideo,
   LayoutDashboard,
   Play,
+  ScrollText,
   UserRound,
 } from "lucide-react";
 
@@ -66,6 +68,11 @@ export default async function RecordDetailsPage({
     profileResult.ok ? profileResult.data : undefined,
   );
   const profileErrorMessage = profileResult.ok ? null : profileResult.message;
+  const reportHref = `/registros/${encodeURIComponent(record.id)}/relatorio`;
+  const zipHref = `/api/records/${encodeURIComponent(record.id)}/zip`;
+  const isCompleted = record.status === "COMPLETED";
+  const hasAssets =
+    recordResult.data.imageCount + recordResult.data.videoCount > 0;
 
   return (
     <AppShell active="dashboard">
@@ -99,6 +106,22 @@ export default async function RecordDetailsPage({
                     <Play data-icon="inline-start" aria-hidden="true" />
                     Continuar captura
                   </Link>
+                </Button>
+              ) : null}
+              {isCompleted ? (
+                <Button asChild>
+                  <Link href={reportHref}>
+                    <ScrollText data-icon="inline-start" aria-hidden="true" />
+                    Ver relatório
+                  </Link>
+                </Button>
+              ) : null}
+              {isCompleted && hasAssets ? (
+                <Button asChild>
+                  <a href={zipHref} download>
+                    <Download data-icon="inline-start" aria-hidden="true" />
+                    Baixar ZIP
+                  </a>
                 </Button>
               ) : null}
             </>
