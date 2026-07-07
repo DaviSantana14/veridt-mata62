@@ -4,7 +4,11 @@ import {
   NotFoundException,
   type OnModuleDestroy,
 } from '@nestjs/common';
-import type { BrowserInputRequest, CaptureViewport } from '@veridit/contracts';
+import type {
+  BrowserInputRequest,
+  CapturePreviewSocketMessage,
+  CaptureViewport,
+} from '@veridit/contracts';
 import type { BrowserContext, Page } from 'playwright';
 import { PlaywrightBrowserService } from './playwright-browser.service';
 
@@ -29,6 +33,13 @@ interface CaptureFrameResult {
   viewport: CaptureViewport;
 }
 
+interface PreviewSubscriber {
+  sendFrame(frame: Buffer): void;
+  sendMessage(message: CapturePreviewSocketMessage): void;
+}
+
+type ScreencastMode = 'none' | 'preview' | 'recording';
+
 interface CaptureSession {
   recordId: string;
   userId: string;
@@ -38,13 +49,17 @@ interface CaptureSession {
   viewport: CaptureViewport;
   recording: boolean;
   lastActivityAt: number;
+  previewSubscribers: Set<PreviewSubscriber>;
+  screencastMode: ScreencastMode;
+  lastPreviewFrameAt: number;
+  lastPreviewMetadataAt: number;
 }
 
 @Injectable()
 export class CaptureSessionManagerService implements OnModuleDestroy {
   private readonly sessions = new Map<string, CaptureSession>();
   private readonly startingRecordIds = new Set<string>();
-  private readonly videoOperationRecordIds = new Set<string>();
+  private readonly screencastOperationQueues = new Map<string, Promise<void>>();
 
   constructor(private readonly browserService: PlaywrightBrowserService) {}
 
@@ -75,6 +90,10 @@ export class CaptureSessionManagerService implements OnModuleDestroy {
         viewport,
         recording: false,
         lastActivityAt: Date.now(),
+        previewSubscribers: new Set<PreviewSubscriber>(),
+        screencastMode: 'none',
+        lastPreviewFrameAt: 0,
+        lastPreviewMetadataAt: 0,
       });
 
       return {
@@ -165,7 +184,7 @@ export class CaptureSessionManagerService implements OnModuleDestroy {
   }
 
   async startVideo(recordId: string, filePath: string): Promise<void> {
-    await this.withVideoOperationLock(recordId, async () => {
+    await this.withScreencastOperation(recordId, async () => {
       const session = this.getSession(recordId);
 
       if (session.recording) {
@@ -174,17 +193,28 @@ export class CaptureSessionManagerService implements OnModuleDestroy {
         );
       }
 
-      await session.page.screencast.start({
-        path: filePath,
-        size: session.viewport,
-      });
+      if (session.screencastMode === 'preview') {
+        await session.page.screencast.stop();
+        session.screencastMode = 'none';
+      }
+
+      try {
+        await this.startRecordingScreencast(session, filePath);
+      } catch (error) {
+        if (session.previewSubscribers.size > 0) {
+          await this.startPreviewScreencast(session);
+        }
+
+        throw error;
+      }
+
       session.recording = true;
       this.touch(session);
     });
   }
 
   async stopVideo(recordId: string): Promise<{ recording: false }> {
-    return this.withVideoOperationLock(recordId, async () => {
+    return this.withScreencastOperation(recordId, async () => {
       const session = this.getSession(recordId);
 
       if (!session.recording) {
@@ -193,15 +223,77 @@ export class CaptureSessionManagerService implements OnModuleDestroy {
 
       await session.page.screencast.stop();
       session.recording = false;
+      session.screencastMode = 'none';
+
+      if (session.previewSubscribers.size > 0) {
+        await this.startPreviewScreencast(session);
+      }
+
       this.touch(session);
 
       return { recording: false };
     });
   }
 
+  async subscribePreview(
+    recordId: string,
+    subscriber: PreviewSubscriber,
+  ): Promise<() => Promise<void>> {
+    return this.withScreencastOperation(recordId, async () => {
+      const session = this.getSession(recordId);
+
+      session.previewSubscribers.add(subscriber);
+
+      try {
+        subscriber.sendMessage({
+          type: 'ready',
+          recordId,
+          targetFps: this.getPreviewTargetFps(),
+          viewport: this.getPreviewSize(session.viewport),
+        });
+        this.sendPreviewMetadata(
+          session,
+          this.getPreviewSize(session.viewport),
+          {
+            only: subscriber,
+          },
+        );
+
+        if (session.screencastMode === 'none') {
+          await this.startPreviewScreencast(session);
+        }
+      } catch (error) {
+        session.previewSubscribers.delete(subscriber);
+        throw error;
+      }
+
+      this.touch(session);
+
+      return async () => {
+        await this.withScreencastOperation(recordId, async () => {
+          if (!this.sessions.has(session.recordId)) {
+            return;
+          }
+
+          session.previewSubscribers.delete(subscriber);
+
+          if (
+            session.previewSubscribers.size === 0 &&
+            session.screencastMode === 'preview'
+          ) {
+            await session.page.screencast.stop();
+            session.screencastMode = 'none';
+          }
+        });
+      };
+    });
+  }
+
   async closeSession(recordId: string): Promise<void> {
-    const session = this.getSession(recordId);
-    await this.closeExistingSession(session);
+    await this.withScreencastOperation(recordId, async () => {
+      const session = this.getSession(recordId);
+      await this.closeExistingSession(session);
+    });
   }
 
   async closeIdleSessions(): Promise<number> {
@@ -212,7 +304,7 @@ export class CaptureSessionManagerService implements OnModuleDestroy {
     );
 
     for (const session of idleSessions) {
-      await this.closeExistingSession(session);
+      await this.closeSession(session.recordId);
     }
 
     return idleSessions.length;
@@ -222,7 +314,7 @@ export class CaptureSessionManagerService implements OnModuleDestroy {
     const sessions = Array.from(this.sessions.values());
 
     await Promise.allSettled(
-      sessions.map((session) => this.closeExistingSession(session)),
+      sessions.map((session) => this.closeSession(session.recordId)),
     );
   }
 
@@ -236,30 +328,129 @@ export class CaptureSessionManagerService implements OnModuleDestroy {
     return session;
   }
 
-  private async withVideoOperationLock<T>(
+  private async withScreencastOperation<T>(
     recordId: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    if (this.videoOperationRecordIds.has(recordId)) {
-      throw new ConflictException(
-        'Capture video operation already in progress',
-      );
-    }
+    const previous =
+      this.screencastOperationQueues.get(recordId) ?? Promise.resolve();
+    let releaseCurrentOperation: () => void = () => undefined;
+    const currentOperation = new Promise<void>((resolve) => {
+      releaseCurrentOperation = resolve;
+    });
+    const nextOperation = previous
+      .catch(() => undefined)
+      .then(() => currentOperation);
 
-    this.videoOperationRecordIds.add(recordId);
+    this.screencastOperationQueues.set(recordId, nextOperation);
+    await previous.catch(() => undefined);
 
     try {
       return await operation();
     } finally {
-      this.videoOperationRecordIds.delete(recordId);
+      releaseCurrentOperation();
+
+      if (this.screencastOperationQueues.get(recordId) === nextOperation) {
+        this.screencastOperationQueues.delete(recordId);
+      }
     }
   }
 
   private async closeExistingSession(session: CaptureSession): Promise<void> {
     try {
+      session.previewSubscribers.clear();
       await session.context.close();
     } finally {
       this.sessions.delete(session.recordId);
+    }
+  }
+
+  private async startPreviewScreencast(session: CaptureSession): Promise<void> {
+    await session.page.screencast.start({
+      quality: this.getPreviewQuality(),
+      size: this.getPreviewSize(session.viewport),
+      onFrame: (frame) => this.dispatchPreviewFrame(session, frame),
+    });
+    session.screencastMode = 'preview';
+  }
+
+  private async startRecordingScreencast(
+    session: CaptureSession,
+    filePath: string,
+  ): Promise<void> {
+    await session.page.screencast.start({
+      path: filePath,
+      quality: this.getPreviewQuality(),
+      size: this.getPreviewSize(session.viewport),
+      onFrame: (frame) => this.dispatchPreviewFrame(session, frame),
+    });
+    session.screencastMode = 'recording';
+  }
+
+  private dispatchPreviewFrame(
+    session: CaptureSession,
+    frame: {
+      data: Buffer;
+      timestamp: number;
+      viewportWidth: number;
+      viewportHeight: number;
+    },
+  ): void {
+    if (session.previewSubscribers.size === 0) {
+      return;
+    }
+
+    const now = Date.now();
+
+    if (now - session.lastPreviewFrameAt < this.getPreviewFrameIntervalMs()) {
+      return;
+    }
+
+    session.lastPreviewFrameAt = now;
+    const viewport = {
+      width: frame.viewportWidth,
+      height: frame.viewportHeight,
+    };
+
+    if (
+      now - session.lastPreviewMetadataAt >=
+      this.getPreviewMetadataIntervalMs()
+    ) {
+      this.sendPreviewMetadata(session, viewport, {
+        capturedAt: new Date(frame.timestamp).toISOString(),
+      });
+      session.lastPreviewMetadataAt = now;
+    }
+
+    const payload = Buffer.from(frame.data);
+
+    for (const subscriber of session.previewSubscribers) {
+      subscriber.sendFrame(payload);
+    }
+
+    this.touch(session);
+  }
+
+  private sendPreviewMetadata(
+    session: CaptureSession,
+    viewport: CaptureViewport,
+    options: { capturedAt?: string; only?: PreviewSubscriber } = {},
+  ): void {
+    const message: CapturePreviewSocketMessage = {
+      type: 'metadata',
+      recordId: session.recordId,
+      currentUrl: session.page.url(),
+      viewport,
+      capturedAt: options.capturedAt ?? new Date().toISOString(),
+    };
+
+    if (options.only) {
+      options.only.sendMessage(message);
+      return;
+    }
+
+    for (const subscriber of session.previewSubscribers) {
+      subscriber.sendMessage(message);
     }
   }
 
@@ -343,6 +534,38 @@ export class CaptureSessionManagerService implements OnModuleDestroy {
 
   private getJpegQuality(): number {
     return this.getClampedIntegerEnv('CAPTURE_FRAME_QUALITY', 72, 1, 100);
+  }
+
+  private getPreviewTargetFps(): number {
+    return this.getClampedIntegerEnv('CAPTURE_PREVIEW_FPS', 15, 1, 30);
+  }
+
+  private getPreviewFrameIntervalMs(): number {
+    return Math.round(1000 / this.getPreviewTargetFps());
+  }
+
+  private getPreviewQuality(): number {
+    return this.getClampedIntegerEnv('CAPTURE_PREVIEW_QUALITY', 55, 1, 100);
+  }
+
+  private getPreviewSize(viewport: CaptureViewport): CaptureViewport {
+    return {
+      width: Math.min(
+        viewport.width,
+        this.getPositiveIntegerEnv('CAPTURE_PREVIEW_MAX_WIDTH', 960),
+      ),
+      height: Math.min(
+        viewport.height,
+        this.getPositiveIntegerEnv('CAPTURE_PREVIEW_MAX_HEIGHT', 540),
+      ),
+    };
+  }
+
+  private getPreviewMetadataIntervalMs(): number {
+    return this.getPositiveIntegerEnv(
+      'CAPTURE_PREVIEW_METADATA_INTERVAL_MS',
+      1000,
+    );
   }
 
   private getIdleTimeoutMs(): number {

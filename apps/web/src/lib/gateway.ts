@@ -22,6 +22,7 @@ import type {
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:3001";
+const WS_BASE_URL = process.env.NEXT_PUBLIC_API_GATEWAY_WS_URL ?? BASE_URL;
 const REQUEST_TIMEOUT_MS = 10000;
 
 type GatewayResult<T> =
@@ -115,6 +116,20 @@ export function getCaptureFrame(recordId: string) {
   );
 }
 
+export function getCapturePreviewWebSocketUrl(recordId: string) {
+  const url = new URL("/capture/preview", WS_BASE_URL);
+
+  if (url.protocol === "http:") {
+    url.protocol = "ws:";
+  } else if (url.protocol === "https:") {
+    url.protocol = "wss:";
+  }
+
+  url.searchParams.set("recordId", recordId);
+
+  return url.toString();
+}
+
 export function getCaptureRecord(recordId: string) {
   return requestGateway<CaptureRecordDetailsResponse>(
     `/capture/records/${recordId}`,
@@ -202,7 +217,9 @@ export async function downloadCaptureAssetBytes(
   }
 }
 
-function parseGatewayError(text: string): { message?: string; payload?: { message?: string } } | null {
+function parseGatewayError(
+  text: string,
+): { message?: string; payload?: { message?: string } } | null {
   if (!text) {
     return null;
   }

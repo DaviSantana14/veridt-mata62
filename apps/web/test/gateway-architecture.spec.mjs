@@ -29,6 +29,9 @@ const captureRecordFormatters = readProjectFile(
 const captureClient = readProjectFile(
   "src/components/veridit/capture-client.tsx",
 );
+const captureBrowserClient = readProjectFile(
+  "src/components/veridit/capture-browser-client.tsx",
+);
 const recordRow = readProjectFile("src/components/veridit/record-row.tsx");
 const recordDetailsPage = readProjectFile("src/app/registros/[id]/page.tsx");
 const recordReportPage = readProjectFile(
@@ -47,7 +50,9 @@ const logoutButton = readProjectFile(
 );
 const mockData = readProjectFile("src/lib/mock-data.ts");
 const profilePage = readProjectFile("src/app/perfil/page.tsx");
-const profileClient = readProjectFile("src/components/veridit/profile-client.tsx");
+const profileClient = readProjectFile(
+  "src/components/veridit/profile-client.tsx",
+);
 
 assert.match(
   gateway,
@@ -158,6 +163,31 @@ assert.match(
   gateway,
   /function listCaptureRecords\(userId: string\)/,
   "web gateway helpers must expose capture record listing",
+);
+assert.match(
+  gateway,
+  /function getCapturePreviewWebSocketUrl\(recordId: string\)/,
+  "web gateway helpers must expose the capture preview WebSocket URL",
+);
+assert.match(
+  gateway,
+  /NEXT_PUBLIC_API_GATEWAY_WS_URL\s*\?\?\s*BASE_URL/,
+  "capture preview WebSocket URL must derive from the public API Gateway URL by default",
+);
+assert.match(
+  captureBrowserClient,
+  /new WebSocket\(getCapturePreviewWebSocketUrl\(recordId\)\)/,
+  "capture browser must use the API Gateway WebSocket preview stream",
+);
+assert.match(
+  captureBrowserClient,
+  /getCaptureFrame\(recordId\)/,
+  "capture browser must keep the HTTP frame endpoint as a fallback",
+);
+assert.doesNotMatch(
+  captureBrowserClient,
+  /localhost:3103|CAPTURE_SERVICE/,
+  "capture browser must not connect directly to capture-service",
 );
 assert.match(
   gateway,

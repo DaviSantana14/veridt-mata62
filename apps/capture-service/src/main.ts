@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { SERVICE_PORTS } from '@veridit/contracts';
 import { AppModule } from './app.module';
+import { CapturePreviewWebSocketService } from './capture/capture-preview-websocket.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -14,6 +15,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  app.get(CapturePreviewWebSocketService).attach(app.getHttpServer());
 
   await app.listen(Number(process.env.PORT ?? SERVICE_PORTS.capture));
 }

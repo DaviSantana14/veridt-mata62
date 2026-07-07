@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { CapturePreviewWebSocketService } from './capture/capture-preview-websocket.service';
 import { CaptureSessionManagerService } from './capture/capture-session-manager.service';
 import { CaptureStorageService } from './capture/capture-storage.service';
 import { PlaywrightBrowserService } from './capture/playwright-browser.service';
@@ -18,6 +19,7 @@ import { PrismaModule } from './prisma/prisma.module';
     CaptureStorageService,
     PlaywrightBrowserService,
     CaptureSessionManagerService,
+    CapturePreviewWebSocketService,
   ],
 })
 export class AppModule {}

@@ -25,6 +25,8 @@ import { toast } from "sonner";
 import type {
   BrowserInputRequest,
   CaptureFrameResponse,
+  CapturePreviewSocketMessage,
+  CaptureViewport,
 } from "@veridit/contracts";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -40,6 +42,7 @@ import {
   captureScreenshot,
   completeCapture,
   getCaptureFrame,
+  getCapturePreviewWebSocketUrl,
   navigateCapture,
   sendCaptureInput,
   startCaptureVideo,
@@ -49,6 +52,7 @@ import { cn } from "@/lib/utils";
 
 const FRAME_REFRESH_MS = 850;
 const POLLING_PAUSE_STATUSES = new Set([404, 409, 500, 502]);
+type PreviewTransport = "websocket" | "fallback";
 
 function getFrameErrorMessage(status?: number, fallback?: string) {
   if (status === 409) {
@@ -68,6 +72,14 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
   const [loadingFrame, setLoadingFrame] = useState(true);
   const [frameError, setFrameError] = useState<string | null>(null);
   const [frameErrorStatus, setFrameErrorStatus] = useState<number | null>(null);
+  const [liveFrameSource, setLiveFrameSource] = useState<string | null>(null);
+  const [liveViewport, setLiveViewport] = useState<CaptureViewport | null>(
+    null,
+  );
+  const [liveCurrentUrl, setLiveCurrentUrl] = useState<string | null>(null);
+  const [previewTransport, setPreviewTransport] =
+    useState<PreviewTransport>("websocket");
+  const [previewReconnectKey, setPreviewReconnectKey] = useState(0);
   const [recording, setRecording] = useState(false);
   const [pollingPaused, setPollingPaused] = useState(false);
   const [consecutiveFrameErrors, setConsecutiveFrameErrors] = useState(0);
@@ -78,7 +90,44 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
   const [addressDirty, setAddressDirty] = useState(false);
   const fetchingFrame = useRef(false);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const sessionUnavailable = pollingPaused || Boolean(frameError && !frame);
+  const addressDirtyRef = useRef(addressDirty);
+  const liveFrameSourceRef = useRef<string | null>(null);
+  const previewTransportRef = useRef<PreviewTransport>("websocket");
+  const previewConnectionGenerationRef = useRef(0);
+  const sessionUnavailable =
+    pollingPaused || Boolean(frameError && !frame && !liveFrameSource);
+  const fallbackFrameSource = frame
+    ? `data:${frame.mimeType};base64,${frame.imageBase64}`
+    : null;
+  const frameSource =
+    previewTransport === "websocket"
+      ? (liveFrameSource ?? fallbackFrameSource)
+      : (fallbackFrameSource ?? liveFrameSource);
+  const activeViewport =
+    previewTransport === "websocket"
+      ? (liveViewport ?? frame?.viewport ?? null)
+      : (frame?.viewport ?? liveViewport);
+  const currentUrl =
+    previewTransport === "websocket"
+      ? (liveCurrentUrl ?? frame?.currentUrl)
+      : (frame?.currentUrl ?? liveCurrentUrl);
+
+  useEffect(() => {
+    addressDirtyRef.current = addressDirty;
+  }, [addressDirty]);
+
+  useEffect(() => {
+    previewTransportRef.current = previewTransport;
+  }, [previewTransport]);
+
+  useEffect(() => {
+    return () => {
+      if (liveFrameSourceRef.current) {
+        URL.revokeObjectURL(liveFrameSourceRef.current);
+        liveFrameSourceRef.current = null;
+      }
+    };
+  }, []);
 
   const resumePolling = useCallback(() => {
     setPollingPaused(false);
@@ -88,7 +137,7 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
   }, []);
 
   const refreshFrame = useCallback(
-    async (showLoading = false) => {
+    async (showLoading = false, options: { fallbackOnly?: boolean } = {}) => {
       if (fetchingFrame.current) {
         return;
       }
@@ -100,8 +149,15 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
       }
 
       const result = await getCaptureFrame(recordId);
+      const staleFallbackResult =
+        options.fallbackOnly && previewTransportRef.current !== "fallback";
 
       fetchingFrame.current = false;
+
+      if (staleFallbackResult) {
+        return;
+      }
+
       setLoadingFrame(false);
 
       if (!result.ok) {
@@ -122,27 +178,144 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
       setPollingPaused(false);
       setConsecutiveFrameErrors(0);
       setFrame(result.data);
-      if (!addressDirty) {
+      if (!addressDirtyRef.current) {
         setAddressValue(result.data.currentUrl);
       }
       setFrameError(null);
       setFrameErrorStatus(null);
     },
-    [addressDirty, recordId],
+    [recordId],
   );
+
+  useEffect(() => {
+    if (previewTransport !== "websocket") {
+      return;
+    }
+
+    let closed = false;
+    const connectionGeneration = ++previewConnectionGenerationRef.current;
+    const socket = new WebSocket(getCapturePreviewWebSocketUrl(recordId));
+    socket.binaryType = "blob";
+    setLoadingFrame(true);
+    setPollingPaused(false);
+    setFrameError(null);
+    setFrameErrorStatus(null);
+
+    function isCurrentConnection() {
+      return (
+        !closed &&
+        previewConnectionGenerationRef.current === connectionGeneration
+      );
+    }
+
+    function switchToFallback(message: string, status?: number) {
+      if (!isCurrentConnection()) {
+        return;
+      }
+
+      closed = true;
+      socket.close();
+      previewTransportRef.current = "fallback";
+      setPreviewTransport("fallback");
+      setLoadingFrame(false);
+      setFrameError(getFrameErrorMessage(status, message));
+      setFrameErrorStatus(status ?? null);
+      void refreshFrame(true, { fallbackOnly: true });
+    }
+
+    function applyMessage(message: CapturePreviewSocketMessage) {
+      if (!isCurrentConnection()) {
+        return;
+      }
+
+      if (message.type === "ready") {
+        setLiveViewport(message.viewport);
+        setFrameError(null);
+        setFrameErrorStatus(null);
+        return;
+      }
+
+      if (message.type === "metadata") {
+        setLiveViewport(message.viewport);
+        setLiveCurrentUrl(message.currentUrl);
+        if (!addressDirtyRef.current) {
+          setAddressValue(message.currentUrl);
+        }
+        return;
+      }
+
+      switchToFallback(message.message, message.status);
+    }
+
+    socket.addEventListener("message", (event) => {
+      if (!isCurrentConnection()) {
+        return;
+      }
+
+      if (typeof event.data === "string") {
+        try {
+          applyMessage(JSON.parse(event.data) as CapturePreviewSocketMessage);
+        } catch {
+          switchToFallback("Mensagem inválida do preview ao vivo.");
+        }
+        return;
+      }
+
+      const blob =
+        event.data instanceof Blob
+          ? event.data
+          : new Blob([event.data], { type: "image/jpeg" });
+      const nextUrl = URL.createObjectURL(blob);
+      const previousUrl = liveFrameSourceRef.current;
+      liveFrameSourceRef.current = nextUrl;
+      setLiveFrameSource(nextUrl);
+      setLoadingFrame(false);
+      setFrameError(null);
+      setFrameErrorStatus(null);
+
+      if (previousUrl) {
+        URL.revokeObjectURL(previousUrl);
+      }
+    });
+
+    socket.addEventListener("error", () => {
+      switchToFallback(
+        "Preview ao vivo indisponível. Usando atualização por frame.",
+      );
+    });
+
+    socket.addEventListener("close", () => {
+      if (!closed) {
+        switchToFallback(
+          "Preview ao vivo encerrado. Usando atualização por frame.",
+        );
+      }
+    });
+
+    return () => {
+      closed = true;
+      socket.close();
+    };
+  }, [previewReconnectKey, previewTransport, recordId, refreshFrame]);
 
   useEffect(() => {
     let active = true;
 
+    if (previewTransport !== "fallback") {
+      return () => {
+        active = false;
+      };
+    }
+
     async function tick() {
       if (active && !pollingPaused) {
-        await refreshFrame();
+        await refreshFrame(false, { fallbackOnly: true });
       }
     }
 
     const initialFrameId = window.setTimeout(() => {
       if (!pollingPaused) {
-        void refreshFrame();
+        void refreshFrame(false, { fallbackOnly: true });
       }
     }, 0);
     const intervalId = window.setInterval(() => {
@@ -154,7 +327,7 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
       window.clearTimeout(initialFrameId);
       window.clearInterval(intervalId);
     };
-  }, [pollingPaused, recordId, refreshFrame]);
+  }, [pollingPaused, previewTransport, recordId, refreshFrame]);
 
   const sendInput = useCallback(
     async (payload: BrowserInputRequest) => {
@@ -172,9 +345,17 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
       }
 
       resumePolling();
-      void refreshFrame();
+      if (previewTransport === "fallback") {
+        void refreshFrame(false, { fallbackOnly: true });
+      }
     },
-    [recordId, refreshFrame, resumePolling, sessionUnavailable],
+    [
+      previewTransport,
+      recordId,
+      refreshFrame,
+      resumePolling,
+      sessionUnavailable,
+    ],
   );
 
   useEffect(() => {
@@ -206,8 +387,18 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
   }, [sendInput, sessionUnavailable]);
 
   async function onManualRefresh() {
-    resumePolling();
-    await refreshFrame(true);
+    setLoadingFrame(true);
+
+    if (previewTransport === "fallback") {
+      previewConnectionGenerationRef.current += 1;
+      previewTransportRef.current = "websocket";
+      setPreviewTransport("websocket");
+      setPreviewReconnectKey((current) => current + 1);
+      return;
+    }
+
+    previewConnectionGenerationRef.current += 1;
+    setPreviewReconnectKey((current) => current + 1);
   }
 
   async function onNavigate(event: FormEvent<HTMLFormElement>) {
@@ -234,25 +425,30 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
     setAddressDirty(false);
     resumePolling();
     toast.success("Página carregada na sessão.");
-    void refreshFrame(true);
+
+    if (previewTransport === "fallback") {
+      void refreshFrame(true, { fallbackOnly: true });
+    } else {
+      setLoadingFrame(true);
+    }
   }
 
   function getFrameCoordinates(event: MouseEvent<HTMLDivElement>) {
-    if (!frame || !viewportRef.current) {
+    if (!activeViewport || !viewportRef.current) {
       return null;
     }
 
     const rect = viewportRef.current.getBoundingClientRect();
     const x = Math.round(
-      ((event.clientX - rect.left) / rect.width) * frame.viewport.width,
+      ((event.clientX - rect.left) / rect.width) * activeViewport.width,
     );
     const y = Math.round(
-      ((event.clientY - rect.top) / rect.height) * frame.viewport.height,
+      ((event.clientY - rect.top) / rect.height) * activeViewport.height,
     );
 
     return {
-      x: Math.max(0, Math.min(frame.viewport.width, x)),
-      y: Math.max(0, Math.min(frame.viewport.height, y)),
+      x: Math.max(0, Math.min(activeViewport.width, x)),
+      y: Math.max(0, Math.min(activeViewport.height, y)),
     };
   }
 
@@ -325,7 +521,9 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
       description: result.data.fileName,
     });
     resumePolling();
-    void refreshFrame();
+    if (previewTransport === "fallback") {
+      void refreshFrame(false, { fallbackOnly: true });
+    }
   }
 
   async function onToggleVideo() {
@@ -347,6 +545,9 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
     toast.success(
       result.data.recording ? "Gravação iniciada." : "Vídeo salvo.",
     );
+    if (previewTransport === "fallback") {
+      void refreshFrame(false, { fallbackOnly: true });
+    }
   }
 
   async function onComplete() {
@@ -370,10 +571,6 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
     router.push(`/captura/concluida?recordId=${encodeURIComponent(recordId)}`);
   }
 
-  const frameSource = frame
-    ? `data:${frame.mimeType};base64,${frame.imageBase64}`
-    : null;
-
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_88px]">
       <section className="min-w-0 overflow-hidden rounded-lg border bg-card shadow-sm">
@@ -383,7 +580,7 @@ export function CaptureBrowserClient({ recordId }: { recordId: string }) {
             <div className="min-w-0">
               <p className="text-sm font-semibold">Navegador de captura</p>
               <p className="truncate text-xs text-muted-foreground">
-                {frame?.currentUrl ?? "Carregando conteudo..."}
+                {currentUrl ?? "Carregando conteudo..."}
               </p>
             </div>
           </div>
