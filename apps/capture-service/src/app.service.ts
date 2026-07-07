@@ -99,16 +99,6 @@ export class AppService {
         status: 'COMPLETED',
         finishedAt,
         details: 'Captura mock concluida pelo boilerplate.',
-        assets: {
-          create: [
-            {
-              type: 'IMAGE',
-              fileName: 'mock-capture-001.png',
-              fileSizeBytes: 128000,
-              sourceUrl: body.siteUrl,
-            },
-          ],
-        },
       },
     });
 
@@ -117,7 +107,7 @@ export class AppService {
       userId: record.userId,
       title: record.title,
       siteUrl: record.siteUrl,
-      imageCount: 1,
+      imageCount: 0,
       videoCount: 0,
       occurredAt: finishedAt.toISOString(),
     });
