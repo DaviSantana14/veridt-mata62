@@ -244,6 +244,33 @@ export interface CaptureFrameResponse {
   viewport: CaptureViewport;
 }
 
+export interface CapturePreviewReadyMessage {
+  type: "ready";
+  recordId: string;
+  targetFps: number;
+  viewport: CaptureViewport;
+}
+
+export interface CapturePreviewMetadataMessage {
+  type: "metadata";
+  recordId: string;
+  currentUrl: string;
+  viewport: CaptureViewport;
+  capturedAt: string;
+}
+
+export interface CapturePreviewErrorMessage {
+  type: "error";
+  recordId?: string;
+  message: string;
+  status?: number;
+}
+
+export type CapturePreviewSocketMessage =
+  | CapturePreviewReadyMessage
+  | CapturePreviewMetadataMessage
+  | CapturePreviewErrorMessage;
+
 export interface CaptureAssetResponse {
   id: string;
   recordId: string;

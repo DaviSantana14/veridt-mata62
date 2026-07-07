@@ -45,6 +45,11 @@ describe('CaptureSessionManagerService', () => {
     delete process.env.CAPTURE_VIEWPORT_WIDTH;
     delete process.env.CAPTURE_VIEWPORT_HEIGHT;
     delete process.env.CAPTURE_FRAME_QUALITY;
+    delete process.env.CAPTURE_PREVIEW_FPS;
+    delete process.env.CAPTURE_PREVIEW_QUALITY;
+    delete process.env.CAPTURE_PREVIEW_MAX_WIDTH;
+    delete process.env.CAPTURE_PREVIEW_MAX_HEIGHT;
+    delete process.env.CAPTURE_PREVIEW_METADATA_INTERVAL_MS;
     page = createPageMock();
     closeContext = jest.fn<() => Promise<void>>();
     closeContext.mockResolvedValue(undefined);
@@ -229,7 +234,9 @@ describe('CaptureSessionManagerService', () => {
     await service.startVideo('record-1', 'capture.webm');
     expect(page.screencast.start).toHaveBeenCalledWith({
       path: 'capture.webm',
-      size: { width: 1366, height: 768 },
+      size: { width: 960, height: 540 },
+      quality: 55,
+      onFrame: expect.any(Function),
     });
     await expect(
       service.startVideo('record-1', 'again.webm'),
@@ -237,6 +244,177 @@ describe('CaptureSessionManagerService', () => {
 
     await expect(service.stopVideo('record-1')).resolves.toEqual({
       recording: false,
+    });
+    await expect(service.stopVideo('record-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+
+  it('streams preview frames through a shared screencast subscriber', async () => {
+    await service.startSession({
+      recordId: 'record-1',
+      userId: 'user-1',
+      siteUrl: 'https://example.com',
+    });
+
+    const subscriber = {
+      sendFrame: jest.fn(),
+      sendMessage: jest.fn(),
+    };
+    const cleanup = await service.subscribePreview('record-1', subscriber);
+
+    expect(subscriber.sendMessage).toHaveBeenCalledWith({
+      type: 'ready',
+      recordId: 'record-1',
+      targetFps: 15,
+      viewport: { width: 960, height: 540 },
+    });
+    expect(subscriber.sendMessage).toHaveBeenCalledWith({
+      type: 'metadata',
+      recordId: 'record-1',
+      currentUrl: 'https://example.com/current',
+      viewport: { width: 960, height: 540 },
+      capturedAt: '2026-01-02T03:04:05.006Z',
+    });
+    expect(page.screencast.start).toHaveBeenCalledWith({
+      quality: 55,
+      size: { width: 960, height: 540 },
+      onFrame: expect.any(Function),
+    });
+
+    const onFrame = page.screencast.start.mock.calls[0][0].onFrame;
+    onFrame({
+      data: Buffer.from('preview-frame'),
+      timestamp: Date.parse('2026-01-02T03:04:06.000Z'),
+      viewportWidth: 960,
+      viewportHeight: 540,
+    });
+
+    expect(subscriber.sendFrame).toHaveBeenCalledWith(
+      Buffer.from('preview-frame'),
+    );
+    expect(subscriber.sendMessage).toHaveBeenLastCalledWith({
+      type: 'metadata',
+      recordId: 'record-1',
+      currentUrl: 'https://example.com/current',
+      viewport: { width: 960, height: 540 },
+      capturedAt: '2026-01-02T03:04:06.000Z',
+    });
+
+    await cleanup();
+    expect(page.screencast.stop).toHaveBeenCalled();
+  });
+
+  it('serializes concurrent preview subscriptions into one screencast', async () => {
+    await service.startSession({
+      recordId: 'record-1',
+      userId: 'user-1',
+      siteUrl: 'https://example.com',
+    });
+
+    const [cleanupFirst, cleanupSecond] = await Promise.all([
+      service.subscribePreview('record-1', {
+        sendFrame: jest.fn(),
+        sendMessage: jest.fn(),
+      }),
+      service.subscribePreview('record-1', {
+        sendFrame: jest.fn(),
+        sendMessage: jest.fn(),
+      }),
+    ]);
+
+    expect(page.screencast.start).toHaveBeenCalledTimes(1);
+
+    await cleanupFirst();
+    expect(page.screencast.stop).not.toHaveBeenCalled();
+
+    await cleanupSecond();
+    expect(page.screencast.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not keep a preview subscriber when screencast start fails', async () => {
+    page.screencast.start.mockRejectedValueOnce(new Error('screencast failed'));
+    await service.startSession({
+      recordId: 'record-1',
+      userId: 'user-1',
+      siteUrl: 'https://example.com',
+    });
+    const failedSubscriber = {
+      sendFrame: jest.fn(),
+      sendMessage: jest.fn(),
+    };
+
+    await expect(
+      service.subscribePreview('record-1', failedSubscriber),
+    ).rejects.toThrow('screencast failed');
+
+    const activeSubscriber = {
+      sendFrame: jest.fn(),
+      sendMessage: jest.fn(),
+    };
+    const cleanup = await service.subscribePreview(
+      'record-1',
+      activeSubscriber,
+    );
+    const onFrame = page.screencast.start.mock.calls[1][0].onFrame;
+    onFrame({
+      data: Buffer.from('preview-frame'),
+      timestamp: Date.parse('2026-01-02T03:04:06.000Z'),
+      viewportWidth: 960,
+      viewportHeight: 540,
+    });
+
+    expect(failedSubscriber.sendFrame).not.toHaveBeenCalled();
+    expect(activeSubscriber.sendFrame).toHaveBeenCalledWith(
+      Buffer.from('preview-frame'),
+    );
+
+    await cleanup();
+  });
+
+  it('restarts preview-only screencast as recording screencast when video starts', async () => {
+    await service.startSession({
+      recordId: 'record-1',
+      userId: 'user-1',
+      siteUrl: 'https://example.com',
+    });
+    await service.subscribePreview('record-1', {
+      sendFrame: jest.fn(),
+      sendMessage: jest.fn(),
+    });
+
+    await service.startVideo('record-1', 'capture.webm');
+
+    expect(page.screencast.stop).toHaveBeenCalledTimes(1);
+    expect(page.screencast.start).toHaveBeenLastCalledWith({
+      path: 'capture.webm',
+      quality: 55,
+      size: { width: 960, height: 540 },
+      onFrame: expect.any(Function),
+    });
+  });
+
+  it('restores preview screencast when starting video fails after preview stop', async () => {
+    await service.startSession({
+      recordId: 'record-1',
+      userId: 'user-1',
+      siteUrl: 'https://example.com',
+    });
+    await service.subscribePreview('record-1', {
+      sendFrame: jest.fn(),
+      sendMessage: jest.fn(),
+    });
+    page.screencast.start.mockRejectedValueOnce(new Error('recording failed'));
+
+    await expect(
+      service.startVideo('record-1', 'capture.webm'),
+    ).rejects.toThrow('recording failed');
+
+    expect(page.screencast.stop).toHaveBeenCalledTimes(1);
+    expect(page.screencast.start).toHaveBeenLastCalledWith({
+      quality: 55,
+      size: { width: 960, height: 540 },
+      onFrame: expect.any(Function),
     });
     await expect(service.stopVideo('record-1')).rejects.toBeInstanceOf(
       ConflictException,

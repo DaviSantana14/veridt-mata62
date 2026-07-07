@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { SERVICE_PORTS } from '@veridit/contracts';
 import { AppModule } from './app.module';
+import { CapturePreviewProxyService } from './capture-preview-proxy.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -17,6 +18,8 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  app.get(CapturePreviewProxyService).attach(app.getHttpServer());
 
   await app.listen(Number(process.env.PORT ?? SERVICE_PORTS.apiGateway));
 }
